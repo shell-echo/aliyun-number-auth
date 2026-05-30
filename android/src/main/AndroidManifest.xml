@@ -1,3 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-  package="studio.echo.aliyun_number_auth">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="studio.echo.aliyun_number_auth">
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" android:maxSdkVersion="28" />
 </manifest>
