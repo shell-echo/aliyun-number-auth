@@ -14,11 +14,16 @@ import 'package:aliyun_number_auth/aliyun_number_auth.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('getPlatformVersion test', (WidgetTester tester) async {
-    final AliyunNumberAuth plugin = AliyunNumberAuth();
-    final String? version = await plugin.getPlatformVersion();
-    // The version string depends on the host platform running the test, so
-    // just assert that some non-empty string is returned.
-    expect(version?.isNotEmpty, true);
+  testWidgets('checkEnvAvailable throws NOT_INITIALIZED when init has not been called',
+      (WidgetTester tester) async {
+    // Calling any SDK method before init() must throw NOT_INITIALIZED, not
+    // crash the app or return a silent false.
+    expect(
+      AliyunNumberAuth.checkEnvAvailable(),
+      throwsA(
+        isA<AliyunNumberAuthException>()
+            .having((e) => e.code, 'code', 'NOT_INITIALIZED'),
+      ),
+    );
   });
 }

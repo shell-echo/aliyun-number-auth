@@ -21,9 +21,12 @@ class MethodChannelAliyunNumberAuth extends AliyunNumberAuthPlatform {
   }
 
   @override
-  Future<bool> checkEnvAvailable() async {
+  Future<bool> checkEnvAvailable({AliyunAuthType type = AliyunAuthType.loginToken}) async {
     try {
-      return await methodChannel.invokeMethod<bool>('checkEnvAvailable') ?? false;
+      return await methodChannel.invokeMethod<bool>('checkEnvAvailable', {
+            'type': type.name,
+          }) ??
+          false;
     } on PlatformException catch (e) {
       if (e.code == 'BUSY' || e.code == 'NOT_INITIALIZED') throw _wrap(e);
       return false;
@@ -40,9 +43,31 @@ class MethodChannelAliyunNumberAuth extends AliyunNumberAuthPlatform {
   }
 
   @override
+  Future<void> preloadLogin({Duration timeout = const Duration(seconds: 3)}) async {
+    try {
+      await methodChannel.invokeMethod<void>('preloadLogin', {'timeout': timeout.inMilliseconds});
+    } on PlatformException catch (e) {
+      throw _wrap(e);
+    }
+  }
+
+  @override
   Future<String> getVerifyToken({Duration timeout = const Duration(seconds: 10)}) async {
     try {
       final token = await methodChannel.invokeMethod<String>('getVerifyToken', {'timeout': timeout.inMilliseconds});
+      if (token == null || token.isEmpty) {
+        throw const AliyunNumberAuthException('NO_TOKEN', 'received null or empty token');
+      }
+      return token;
+    } on PlatformException catch (e) {
+      throw _wrap(e);
+    }
+  }
+
+  @override
+  Future<String> getMobileToken({Duration timeout = const Duration(seconds: 10)}) async {
+    try {
+      final token = await methodChannel.invokeMethod<String>('getMobileToken', {'timeout': timeout.inMilliseconds});
       if (token == null || token.isEmpty) {
         throw const AliyunNumberAuthException('NO_TOKEN', 'received null or empty token');
       }

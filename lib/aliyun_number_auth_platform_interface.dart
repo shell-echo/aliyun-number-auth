@@ -12,6 +12,8 @@ class AliyunNumberAuthException implements Exception {
   String toString() => 'AliyunNumberAuthException($code${message != null ? ': $message' : ''})';
 }
 
+enum AliyunAuthType { verifyToken, loginToken }
+
 abstract class AliyunNumberAuthPlatform extends PlatformInterface {
   /// Constructs a AliyunNumberAuthPlatform.
   AliyunNumberAuthPlatform() : super(token: _token);
@@ -37,7 +39,7 @@ abstract class AliyunNumberAuthPlatform extends PlatformInterface {
     throw UnimplementedError('init() has not been implemented.');
   }
 
-  Future<bool> checkEnvAvailable() {
+  Future<bool> checkEnvAvailable({AliyunAuthType type = AliyunAuthType.loginToken}) {
     throw UnimplementedError('checkEnvAvailable() has not been implemented.');
   }
 
@@ -45,7 +47,15 @@ abstract class AliyunNumberAuthPlatform extends PlatformInterface {
     throw UnimplementedError('preload() has not been implemented.');
   }
 
+  Future<void> preloadLogin({Duration timeout = const Duration(seconds: 3)}) {
+    throw UnimplementedError('preloadLogin() has not been implemented.');
+  }
+
   Future<String> getVerifyToken({Duration timeout = const Duration(seconds: 10)}) {
     throw UnimplementedError('getVerifyToken() has not been implemented.');
+  }
+
+  Future<String> getMobileToken({Duration timeout = const Duration(seconds: 10)}) {
+    throw UnimplementedError('getMobileToken() has not been implemented.');
   }
 }

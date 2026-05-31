@@ -17,8 +17,10 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   String _status = 'Initializing…';
-  bool _envAvailable = false;
-  String? _token;
+  bool _verifyEnvAvailable = false;
+  bool _loginEnvAvailable = false;
+  String? _verifyToken;
+  String? _mobileToken;
 
   @override
   void initState() {
@@ -26,44 +28,72 @@ class _MyAppState extends State<MyApp> {
     _setup();
   }
 
-  // Platform messages are asynchronous, so we initialize in an async method.
   Future<void> _setup() async {
+    // 1. Init — must be called once before any other method.
     try {
       await AliyunNumberAuth.init(_androidSk, _iosSk);
     } on AliyunNumberAuthException catch (e) {
-      // Platform messages may fail, so we use a try/catch AliyunNumberAuthException.
       _updateStatus('Init failed: ${e.code}');
       return;
     }
 
-    final available = await AliyunNumberAuth.checkEnvAvailable();
+    // 2. Check environments sequentially — checkEnvAvailable holds an
+    //    exclusive lock and cannot run concurrently with itself.
+    final verifyAvailable = await AliyunNumberAuth.checkEnvAvailable(
+      type: AliyunAuthType.verifyToken,
+    );
+    final loginAvailable = await AliyunNumberAuth.checkEnvAvailable(
+      type: AliyunAuthType.loginToken,
+    );
 
-    // If the widget was removed from the tree while the asynchronous platform
-    // message was in flight, we want to discard the reply rather than calling
-    // setState to update our non-existent appearance.
     if (!mounted) return;
 
-    if (available) AliyunNumberAuth.preload();
+    // 3. Pre-warm each flow that is available (fire-and-forget).
+    if (verifyAvailable) AliyunNumberAuth.preload();
+    if (loginAvailable) AliyunNumberAuth.preloadLogin();
 
     setState(() {
-      _envAvailable = available;
-      _status = available ? 'Ready' : 'Cellular network not supported';
+      _verifyEnvAvailable = verifyAvailable;
+      _loginEnvAvailable = loginAvailable;
+      _status = 'Ready';
     });
   }
 
-  Future<void> _fetchToken() async {
-    _updateStatus('Fetching token…');
+  // ── Verify token flow ──────────────────────────────────────────────────────
+
+  Future<void> _fetchVerifyToken() async {
+    _updateStatus('Fetching verify token…');
     try {
       final token = await AliyunNumberAuth.getVerifyToken();
       if (!mounted) return;
       setState(() {
-        _token = token;
-        _status = 'Token received';
+        _verifyToken = token;
+        _status = 'Verify token received';
       });
     } on AliyunNumberAuthException catch (e) {
       _updateStatus('Error: ${e.code} ${e.message ?? ''}');
     }
   }
+
+  // ── Login token flow ───────────────────────────────────────────────────────
+
+  Future<void> _fetchMobileToken() async {
+    _updateStatus('Opening auth page…');
+    try {
+      final token = await AliyunNumberAuth.getMobileToken();
+      if (!mounted) return;
+      setState(() {
+        _mobileToken = token;
+        _status = 'Mobile token received';
+      });
+    } on AliyunNumberAuthException catch (e) {
+      // 700000 — user cancelled (tapped back button)
+      // 700001 — user chose other login method
+      _updateStatus('${e.code}: ${e.message ?? ''}');
+    }
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   void _updateStatus(String s) {
     if (!mounted) return;
@@ -83,13 +113,24 @@ class _MyAppState extends State<MyApp> {
             children: [
               Text(_status, textAlign: TextAlign.center),
               const SizedBox(height: 24),
+              // Verify token (本机号码校验)
               ElevatedButton(
-                onPressed: _envAvailable ? _fetchToken : null,
-                child: const Text('Get Verify Token'),
+                onPressed: _verifyEnvAvailable ? _fetchVerifyToken : null,
+                child: const Text('Get Verify Token（号码校验）'),
               ),
-              if (_token != null) ...[
-                const SizedBox(height: 24),
-                SelectableText(_token!, textAlign: TextAlign.center),
+              if (_verifyToken != null) ...[
+                const SizedBox(height: 12),
+                SelectableText(_verifyToken!, textAlign: TextAlign.center),
+              ],
+              const SizedBox(height: 16),
+              // Login token (一键登录)
+              ElevatedButton(
+                onPressed: _loginEnvAvailable ? _fetchMobileToken : null,
+                child: const Text('Get Mobile Token（一键登录）'),
+              ),
+              if (_mobileToken != null) ...[
+                const SizedBox(height: 12),
+                SelectableText(_mobileToken!, textAlign: TextAlign.center),
               ],
             ],
           ),
