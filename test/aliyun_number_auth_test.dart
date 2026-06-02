@@ -13,6 +13,19 @@ class MockAliyunNumberAuthPlatform
   /// Counts checkEnvAvailable calls — used by the dedupe-concurrent-checkEnv test.
   int checkEnvCallCount = 0;
 
+  /// Counts dismissLoginPage calls — used by the autoDismissOnSuccess tests.
+  int dismissLoginPageCallCount = 0;
+  bool? lastDismissWaitForCompletion;
+
+  /// If set, dismissLoginPage throws this exception (used to verify that
+  /// dismiss failures don't swallow the login token).
+  AliyunNumberAuthException? dismissError;
+
+  /// Captures the uiConfig map last passed to getMobileToken — used by the
+  /// autoDismissOnSuccess tests to verify the suspendDisMissVC flag flows
+  /// through correctly.
+  Map<String, dynamic>? lastGetMobileTokenUiConfig;
+
   @override
   Future<void> init(String androidSk, String iosSk) => Future.value();
 
@@ -38,6 +51,7 @@ class MockAliyunNumberAuthPlatform
     Duration timeout = const Duration(seconds: 10),
     Map<String, dynamic>? uiConfig,
   }) {
+    lastGetMobileTokenUiConfig = uiConfig;
     return Future.value('mock_mobile_token');
   }
 
@@ -57,7 +71,16 @@ class MockAliyunNumberAuthPlatform
   void setAuthPageShownCallback(void Function()? callback) {}
 
   @override
-  Future<void> dismissLoginPage({bool animated = true}) => Future.value();
+  Future<void> dismissLoginPage({
+    bool animated = true,
+    bool waitForCompletion = false,
+  }) {
+    dismissLoginPageCallCount++;
+    lastDismissWaitForCompletion = waitForCompletion;
+    final err = dismissError;
+    if (err != null) return Future.error(err);
+    return Future.value();
+  }
 
   @override
   Future<void> setCheckboxChecked(bool checked) => Future.value();
@@ -602,6 +625,83 @@ void main() {
         await Future.wait([c.checkEnv(), c.checkEnv(), c.checkEnv()]);
         expect(fakePlatform.checkEnvCallCount, 1,
             reason: 'three concurrent calls should result in one platform hit');
+        c.dispose();
+      });
+
+      // ── autoDismissOnSuccess regression suite ──────────────────────────────
+      // The feature dismisses the SDK auth page after a successful login but
+      // only when the resolved config has `suspendDisMissVC: true` (without
+      // it, the SDK auto-closes and an explicit dismiss would be a no-op at
+      // best, double-close races at worst).
+
+      test('autoDismissOnSuccess=true + suspendDisMissVC=true → dismisses '
+           'with waitForCompletion=true', () async {
+        fakePlatform.dismissLoginPageCallCount = 0;
+        fakePlatform.lastDismissWaitForCompletion = null;
+        final c = AliyunAuthController(autoCheck: false);
+        await c.checkEnv();
+        final token = await c.login(
+          uiConfig: const AliyunAuthUIConfig(suspendDisMissVC: true),
+          autoDismissOnSuccess: true,
+        );
+        expect(token, 'mock_mobile_token');
+        expect(fakePlatform.dismissLoginPageCallCount, 1);
+        // The whole point of auto-dismiss is letting the caller navigate
+        // cleanly in onSuccess — that requires waiting for the iOS dismiss
+        // animation to actually finish, not just be commanded.
+        expect(fakePlatform.lastDismissWaitForCompletion, true);
+        c.dispose();
+      });
+
+      test('autoDismissOnSuccess=true + suspendDisMissVC=false → does NOT '
+           'dismiss (SDK auto-closes)', () async {
+        // Without suspendDisMissVC the SDK closes the auth page itself.
+        // Issuing an extra dismiss would race the SDK's own close.
+        fakePlatform.dismissLoginPageCallCount = 0;
+        final c = AliyunAuthController(autoCheck: false);
+        await c.checkEnv();
+        final token = await c.login(
+          uiConfig: const AliyunAuthUIConfig(),  // suspendDisMissVC defaults false
+          autoDismissOnSuccess: true,
+        );
+        expect(token, 'mock_mobile_token');
+        expect(fakePlatform.dismissLoginPageCallCount, 0);
+        c.dispose();
+      });
+
+      test('autoDismissOnSuccess=false (default) → never dismisses, even with '
+           'suspendDisMissVC=true', () async {
+        // Backward-compat path: existing callers that set suspendDisMissVC
+        // and dismiss manually shouldn't get a surprise extra dismiss.
+        fakePlatform.dismissLoginPageCallCount = 0;
+        final c = AliyunAuthController(autoCheck: false);
+        await c.checkEnv();
+        final token = await c.login(
+          uiConfig: const AliyunAuthUIConfig(suspendDisMissVC: true),
+        );
+        expect(token, 'mock_mobile_token');
+        expect(fakePlatform.dismissLoginPageCallCount, 0);
+        c.dispose();
+      });
+
+      test('dismiss failure during autoDismissOnSuccess does not swallow '
+           'the token', () async {
+        // Auth page may already be gone, plugin detaching, etc. — the
+        // dismiss attempt is best-effort and must not block the token
+        // from reaching the caller.
+        fakePlatform.dismissLoginPageCallCount = 0;
+        fakePlatform.dismissError = const AliyunNumberAuthException(
+          AliyunAuthCode.failed, 'mock dismiss failed');
+        final c = AliyunAuthController(autoCheck: false);
+        await c.checkEnv();
+        final token = await c.login(
+          uiConfig: const AliyunAuthUIConfig(suspendDisMissVC: true),
+          autoDismissOnSuccess: true,
+        );
+        expect(token, 'mock_mobile_token');
+        expect(fakePlatform.dismissLoginPageCallCount, 1);
+        // Reset for any subsequent tests in the group.
+        fakePlatform.dismissError = null;
         c.dispose();
       });
     });

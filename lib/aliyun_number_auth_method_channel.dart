@@ -201,10 +201,14 @@ class MethodChannelAliyunNumberAuth extends AliyunNumberAuthPlatform {
   }
 
   @override
-  Future<void> dismissLoginPage({bool animated = true}) async {
+  Future<void> dismissLoginPage({
+    bool animated = true,
+    bool waitForCompletion = false,
+  }) async {
     try {
       await methodChannel.invokeMethod<void>('dismissLoginPage', {
         'animated': animated,
+        'waitForCompletion': waitForCompletion,
       });
     } on PlatformException catch (e) {
       throw _wrap(e);

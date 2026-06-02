@@ -135,7 +135,10 @@ abstract class AliyunNumberAuthPlatform extends PlatformInterface {
   /// parameter; do not call this setter directly.
   void setAuthPageShownCallback(void Function()? callback) {}
 
-  Future<void> dismissLoginPage({bool animated = true}) async {}
+  Future<void> dismissLoginPage({
+    bool animated = true,
+    bool waitForCompletion = false,
+  }) async {}
 
   /// Programmatically checks or unchecks the privacy checkbox after the auth
   /// page is shown. Supported on both iOS and Android.

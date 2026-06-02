@@ -205,17 +205,45 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
     // ── Dismiss login page ────────────────────────────────────────────────────
     case "dismissLoginPage":
       let animated = args?["animated"] as? Bool ?? true
+      let waitForCompletion = args?["waitForCompletion"] as? Bool ?? false
       pendingLoginResult?(FlutterError(code: Self.codeCancelled,
                                        message: "dismissed programmatically", details: nil))
       pendingLoginResult = nil
-      // Return success eagerly. ATAuthSDK's cancelLoginVCAnimated:complete: has
-      // a `_Nullable` completion block documented as "成功返回" — implying the SDK
-      // is NOT contractually required to fire it (e.g. when there is no VC to
-      // cancel). Passing `complete: nil` and resolving the Dart Future on this
-      // side avoids hanging when the caller defensively dismisses while no auth
-      // page is showing. Matches Android's fire-and-forget `quitLoginPage`.
-      result(nil)
-      auth.cancelLoginVC(animated: animated, complete: nil)
+
+      if !waitForCompletion {
+        // Default path — return success eagerly. ATAuthSDK's
+        // cancelLoginVCAnimated:complete: has a `_Nullable` completion block
+        // documented as "成功返回" — implying the SDK is NOT contractually
+        // required to fire it (e.g. when there is no VC to cancel). Passing
+        // `complete: nil` and resolving the Dart Future on this side avoids
+        // hanging when the caller defensively dismisses while no auth page
+        // is showing. Matches Android's fire-and-forget `quitLoginPage`.
+        result(nil)
+        auth.cancelLoginVC(animated: animated, complete: nil)
+      } else {
+        // Opt-in path — actually wait for the SDK's dismiss animation to
+        // finish before resolving the Dart Future. Used by the controller's
+        // `autoDismissOnSuccess` flow so a caller navigating immediately
+        // after `login()` resolves doesn't visually overlap with the still-
+        // animating auth page.
+        //
+        // 1s safety timeout protects against the SDK's documented behavior
+        // of not always firing `complete`. `settled` is captured by reference
+        // so both the real callback and the timeout race for the same flag —
+        // whichever wins fires result(nil), the other no-ops via the guard.
+        // Main-thread serialization (both paths dispatch to main) makes the
+        // check-then-set sequence safe.
+        var settled = false
+        let settle: () -> Void = {
+          guard !settled else { return }
+          settled = true
+          result(nil)
+        }
+        auth.cancelLoginVC(animated: animated) {
+          DispatchQueue.main.async(execute: settle)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: settle)
+      }
 
     // ── Checkbox runtime control ──────────────────────────────────────────────
     case "setCheckboxChecked":

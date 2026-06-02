@@ -161,8 +161,23 @@ class AliyunNumberAuth {
   /// The [animated] parameter controls the dismiss animation on iOS.
   /// **Android:** the animation parameter is ignored — the page always dismisses
   /// without a custom transition.
-  static Future<void> dismissLoginPage({bool animated = true}) {
-    return AliyunNumberAuthPlatform.instance.dismissLoginPage(animated: animated);
+  ///
+  /// [waitForCompletion] (iOS only): when `true`, the returned Future doesn't
+  /// resolve until the SDK's dismiss animation finishes. Useful when
+  /// navigating to another route immediately after dismiss, to avoid the new
+  /// route briefly overlapping with the dismissing auth page. Defaults to
+  /// `false` because the iOS SDK's completion block is documented `_Nullable`
+  /// and may not fire when there's no auth page to cancel — waiting in that
+  /// case would hang. A 1s safety timeout protects the `true` path. Android
+  /// ignores this parameter (its dismiss is synchronous).
+  static Future<void> dismissLoginPage({
+    bool animated = true,
+    bool waitForCompletion = false,
+  }) {
+    return AliyunNumberAuthPlatform.instance.dismissLoginPage(
+      animated: animated,
+      waitForCompletion: waitForCompletion,
+    );
   }
 
   // ── Auth page runtime control ─────────────────────────────────────────────

@@ -201,7 +201,7 @@ try {
 
 ---
 
-#### `dismissLoginPage({animated})`
+#### `dismissLoginPage({animated, waitForCompletion})`
 
 **程序化关闭**授权页。**仅在授权页已显示时生效**(可以监听 `onAuthPageShown` 或自己保存"已弹出"状态确认时机);未显示时是 no-op,不会报错。
 
@@ -210,11 +210,15 @@ try {
 - 需要从自定义逻辑主动关闭
 
 ```dart
-await AliyunNumberAuth.dismissLoginPage();               // 带动画（默认，iOS）
-await AliyunNumberAuth.dismissLoginPage(animated: false); // 无动画（iOS）
+await AliyunNumberAuth.dismissLoginPage();                          // 带动画(默认,iOS)
+await AliyunNumberAuth.dismissLoginPage(animated: false);           // 无动画(iOS)
+await AliyunNumberAuth.dismissLoginPage(waitForCompletion: true);   // 等动画跑完再 resolve
 ```
 
-> `animated` 参数仅 iOS 有效；Android 始终无缝关闭，忽略该参数。
+| 参数 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `animated` | `bool` | `true` | 仅 iOS 有效;Android 始终无缝关闭,忽略该参数 |
+| `waitForCompletion` | `bool` | `false` | **iOS only**。`true` 时 Future 等到 SDK 的 dismiss 动画完成才 resolve(带 1s 安全超时)。需要在关闭后立即 `Navigator.push` 才用得上,否则新路由可能跟正在消失的授权页短暂重叠。默认 `false`(eager return)是因为 SDK 的 completion block 文档标为 `_Nullable`,无授权页时不一定触发,等待可能挂起 |
 
 关闭后，`getMobileToken` 的 Future 会以 `AliyunAuthCode.cancelled` 拒绝。
 
@@ -366,8 +370,8 @@ uninitialized ──checkEnv()──► checking ──┬─► available
 | 方法 | 说明 |
 |---|---|
 | `checkEnv()` | 主动触发环境检测，刷新 `status`。并发调用自动去重(返回同一 Future)；status 为 `busy` 时 no-op |
-| `login({...})` | 触发一键登录，返回 token。所有参数都可覆盖控制器默认值；并发调用抛 `BUSY`；disposed 调用抛 `CANCELLED` |
-| `dismissLoginPage({animated})` | 程序化关闭授权页 |
+| `login({autoDismissOnSuccess, ...})` | 触发一键登录,返回 token。所有参数都可覆盖控制器默认值;并发调用抛 `BUSY`;disposed 调用抛 `CANCELLED`。`autoDismissOnSuccess: true` 配合 `uiConfig.suspendDisMissVC: true` 使用时,登录成功后会等 iOS 授权页 dismiss 动画跑完再 resolve Future(`waitForCompletion: true`),适合在 `onSuccess` 里 `Navigator.push`;不开 `suspendDisMissVC` 时该参数被忽略(SDK 自己会关) |
+| `dismissLoginPage({animated, waitForCompletion})` | 程序化关闭授权页 |
 | `dispose()` | 释放资源 |
 
 #### 属性
@@ -396,6 +400,7 @@ AliyunAuthWidget(
   controller: myController,            // 不传则内部 own 一个
   uiConfig: AliyunAuthUIConfig(...),   // 仅 controller==null 时生效
   timeout: Duration(seconds: 10),      // 同上
+  autoDismissOnSuccess: true,          // 配合 suspendDisMissVC=true 使用
 
   // 本次 login 的回调（透传到 controller.login）
   onPrivacyLinkTap: (url, name) { ... },
@@ -413,6 +418,7 @@ AliyunAuthWidget(
 | `onError` | `ValueChanged<AliyunNumberAuthException>?` | 内部 `login()` 失败或取消时调用 |
 | `controller` | `AliyunAuthController?` | 外部控制器；不传则 Widget 自己 own（dispose 时一起释放）。**不支持热替换**，debug 模式会触发 `AssertionError`；需切换请给 Widget 一个新的 `Key` |
 | `uiConfig` / `timeout` | 同名 | 仅当 `controller==null` 时使用：初始化内部 controller，并在 `didUpdateWidget` 时同步到 owned controller(下一次 `login()` 生效)。传入外部 `controller` 时这两个参数被忽略 |
+| `autoDismissOnSuccess` | `bool` | 默认 `false`。`true` 且解析后的 `uiConfig.suspendDisMissVC == true` 时,登录成功后等 SDK 授权页 dismiss 动画完成(`waitForCompletion: true`)再触发 `onSuccess`,这样 `onSuccess` 里 `Navigator.push` 不会跟正在消失的授权页重叠。`suspendDisMissVC == false` 时 SDK 自己会关,该参数被忽略 |
 | `onPrivacyLinkTap` 等 5 个回调 | — | 透传给本次 `login()` 调用 |
 
 **Builder 示例（推荐用 switch 表达式）：**

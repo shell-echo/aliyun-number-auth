@@ -56,6 +56,7 @@ class AliyunAuthWidget extends StatefulWidget {
     this.controller,
     this.uiConfig = const AliyunAuthUIConfig(),
     this.timeout = const Duration(seconds: 10),
+    this.autoDismissOnSuccess = false,
     this.onPrivacyLinkTap,
     this.onSuspendedDismiss,
     this.onLoginButtonTap,
@@ -85,6 +86,13 @@ class AliyunAuthWidget extends StatefulWidget {
 
   /// Default timeout — only used when [controller] is `null`.
   final Duration timeout;
+
+  /// Forwarded to [AliyunAuthController.login]. When `true` and the resolved
+  /// [AliyunAuthUIConfig.suspendDisMissVC] is `true`, the SDK auth page is
+  /// dismissed before [onSuccess] fires — saves callers from manually calling
+  /// [AliyunNumberAuth.dismissLoginPage] and avoids the native auth window
+  /// briefly covering the next route after navigation.
+  final bool autoDismissOnSuccess;
 
   // ── Per-login event callbacks (forwarded to AliyunAuthController.login) ──
 
@@ -172,6 +180,7 @@ class _AliyunAuthWidgetState extends State<AliyunAuthWidget> {
   Future<void> _login() async {
     try {
       final token = await _controller.login(
+        autoDismissOnSuccess: widget.autoDismissOnSuccess,
         onPrivacyLinkTap: widget.onPrivacyLinkTap,
         onSuspendedDismiss: widget.onSuspendedDismiss,
         onLoginButtonTap: widget.onLoginButtonTap,

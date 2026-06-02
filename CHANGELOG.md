@@ -16,6 +16,8 @@
 * 新增 **`AliyunAuthController`**（`ChangeNotifier`）：暴露 `status` (`AliyunAuthStatus` 枚举) / `canLogin` / `lastError`，提供 `checkEnv()` / `login(...)` / `dismissLoginPage()` / `dispose()` 方法。可与 `ListenableBuilder` / `Provider` / `Riverpod` 等标准状态管理方案集成
 * `AliyunAuthWidget` 重构为 `AliyunAuthController` 的轻量便利封装：支持外部传入 `controller`，builder 参数从 `bool available` 升级为 `AliyunAuthStatus status`（细分 5 个状态）
 * `AliyunAuthWidget` 新增 `onLoginButtonTap` 参数
+* `AliyunAuthController.login` / `AliyunAuthWidget` 新增 `autoDismissOnSuccess` 参数:配合 `uiConfig.suspendDisMissVC: true` 使用,登录成功后等 iOS 授权页 dismiss 动画跑完再 resolve Future / 触发 `onSuccess`,避免 `onSuccess` 里立即 `Navigator.push` 跟正在消失的授权页视觉重叠。`suspendDisMissVC: false` 时该参数被忽略(SDK 自身会关闭授权页)
+* `AliyunNumberAuth.dismissLoginPage` / `AliyunAuthController.dismissLoginPage` 新增 `waitForCompletion` 参数(iOS only):`true` 时 Future 等到 SDK 的 dismiss 动画完成才 resolve(带 1s 安全超时);默认 `false` 保持 Round 6 的 eager-return 兼容性(SDK completion 是 `_Nullable`,无授权页时不一定触发,等待可能挂起)
 
 **`AliyunAuthUIConfig` 扩展**
 * 新增 `AliyunAuthPresentDirection` 枚举（`bottom`/`right`/`top`/`left`），控制全屏模式进入方向（iOS）

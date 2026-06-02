@@ -184,11 +184,21 @@ class AliyunAuthController extends ChangeNotifier {
   /// login right after constructing the controller with `autoCheck: true`
   /// without racing the env check's state update.
   ///
+  /// When [autoDismissOnSuccess] is `true` AND the resolved
+  /// [AliyunAuthUIConfig.suspendDisMissVC] is `true`, the SDK auth page is
+  /// dismissed before the returned Future resolves. Without this, callers
+  /// using `suspendDisMissVC` would have to manually call
+  /// [dismissLoginPage] after every successful login — easy to forget, and
+  /// the native auth window can briefly cover the next route on iOS if you
+  /// navigate before it's gone. Dismiss errors are swallowed; the token is
+  /// always returned. Defaults to `false` for backward compatibility.
+  ///
   /// All callback / config parameters override the controller's defaults for
   /// this single call.
   Future<String> login({
     AliyunAuthUIConfig? uiConfig,
     Duration? timeout,
+    bool autoDismissOnSuccess = false,
     void Function(String url, String name)? onPrivacyLinkTap,
     VoidCallback? onSuspendedDismiss,
     void Function(bool isChecked)? onLoginButtonTap,
@@ -225,17 +235,32 @@ class AliyunAuthController extends ChangeNotifier {
       );
     }
     final prevStatus = _status;
+    final effectiveConfig = uiConfig ?? this.uiConfig;
     _beginOperation(AliyunAuthStatus.busy);
     try {
       final token = await AliyunNumberAuth.getMobileToken(
         timeout: timeout ?? this.timeout,
-        uiConfig: uiConfig ?? this.uiConfig,
+        uiConfig: effectiveConfig,
         onPrivacyLinkTap: onPrivacyLinkTap,
         onSuspendedDismiss: onSuspendedDismiss,
         onLoginButtonTap: onLoginButtonTap,
         onCheckboxToggle: onCheckboxToggle,
         onAuthPageShown: onAuthPageShown,
       );
+      // Without suspendDisMissVC the SDK already auto-closes; only dismiss
+      // explicitly when the caller suppressed that auto-close.
+      if (autoDismissOnSuccess && effectiveConfig.suspendDisMissVC) {
+        try {
+          // waitForCompletion: true so the Future doesn't resolve until iOS's
+          // dismiss animation finishes — the whole point of auto-dismiss is
+          // to let the caller navigate cleanly in onSuccess, which means the
+          // auth page must actually be gone (not just commanded to dismiss).
+          await AliyunNumberAuth.dismissLoginPage(waitForCompletion: true);
+        } catch (_) {
+          // Auth page may already be gone, plugin detaching, etc. — swallow
+          // so the token still reaches the caller.
+        }
+      }
       // Success proves env is available — force status regardless of prior.
       _setStatusAndError(AliyunAuthStatus.available, null);
       return token;
@@ -254,8 +279,14 @@ class AliyunAuthController extends ChangeNotifier {
   ///
   /// Same semantics as [AliyunNumberAuth.dismissLoginPage]. The pending
   /// [login] future will reject with [AliyunAuthCode.cancelled].
-  Future<void> dismissLoginPage({bool animated = true}) {
-    return AliyunNumberAuth.dismissLoginPage(animated: animated);
+  Future<void> dismissLoginPage({
+    bool animated = true,
+    bool waitForCompletion = false,
+  }) {
+    return AliyunNumberAuth.dismissLoginPage(
+      animated: animated,
+      waitForCompletion: waitForCompletion,
+    );
   }
 
   /// Transitions to [newStatus] and atomically clears [lastError], notifying
