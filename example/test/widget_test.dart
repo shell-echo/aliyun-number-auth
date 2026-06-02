@@ -1,27 +1,61 @@
-// This is a basic Flutter widget test.
+// This is a basic Flutter widget test for the aliyun_number_auth example app.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// To run: `flutter test` inside the example/ directory.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:aliyun_number_auth_example/main.dart';
 
 void main() {
-  testWidgets('Verify Platform version', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const channel = MethodChannel('aliyun_number_auth');
+
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+      switch (call.method) {
+        case 'init':
+          return null;
+        case 'checkEnvAvailable':
+          return false; // simulate env not available
+        default:
+          return null;
+      }
+    });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
+
+  testWidgets('App shows initializing status then transitions to ready',
+      (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp());
 
-    // Verify that platform version is retrieved.
-    expect(
-      find.byWidgetPredicate(
-        (Widget widget) =>
-            widget is Text && widget.data!.startsWith('Running on:'),
-      ),
-      findsOneWidget,
-    );
+    // Status begins as 'Initializing…' before _setup() completes.
+    expect(find.text('Initializing…'), findsOneWidget);
+
+    // Let _setup() run to completion (init + two checkEnvAvailable calls).
+    await tester.pumpAndSettle();
+
+    // After setup, status should be 'Ready'.
+    expect(find.text('Ready'), findsOneWidget);
+  });
+
+  testWidgets('Buttons are disabled when env is not available',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MyApp());
+    await tester.pumpAndSettle();
+
+    // Both ElevatedButtons have onPressed = null (env not available),
+    // so they are rendered as disabled.
+    final buttons = tester.widgetList<ElevatedButton>(find.byType(ElevatedButton));
+    for (final btn in buttons) {
+      expect(btn.onPressed, isNull);
+    }
   });
 }

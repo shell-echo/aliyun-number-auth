@@ -24,15 +24,14 @@ let package = Package(
                 "YTXOperators",
             ],
             resources: [
-                // If your plugin requires a privacy manifest, for example if it uses any required
-                // reason APIs, update the PrivacyInfo.xcprivacy file to describe your plugin's
-                // privacy impact, and then uncomment these lines. For more information, see
-                // https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
-                // .process("PrivacyInfo.xcprivacy"),
-
-                // If you have other resources that need to be bundled with your plugin, refer to
-                // the following instructions to add them:
-                // https://developer.apple.com/documentation/xcode/bundling-resources-with-a-swift-package
+                .process("PrivacyInfo.xcprivacy"),
+            ],
+            // ATAuthSDK uses Objective-C categories on UIViewController to present the
+            // login page. ObjC categories in static xcframeworks are not automatically
+            // linked by the linker — -ObjC forces them in. Without this flag,
+            // getLoginToken crashes with "unrecognized selector" at runtime.
+            linkerSettings: [
+                .unsafeFlags(["-ObjC"], .when(platforms: [.iOS]))
             ]
         ),
         .binaryTarget(name: "ATAuthSDK",    path: "Frameworks/ATAuthSDK.xcframework"),

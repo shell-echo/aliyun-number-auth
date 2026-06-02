@@ -18,7 +18,7 @@ void main() {
       (WidgetTester tester) async {
     // Calling any SDK method before init() must throw NOT_INITIALIZED, not
     // crash the app or return a silent false.
-    expect(
+    await expectLater(
       AliyunNumberAuth.checkEnvAvailable(),
       throwsA(
         isA<AliyunNumberAuthException>()

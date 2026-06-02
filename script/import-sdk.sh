@@ -82,13 +82,36 @@ check_android_class "com/mobile/auth/gatewayauth/ResultCode"
 check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "setAuthSDKInfo"
 check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "checkEnvAvailable"
 check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "accelerateVerify"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "accelerateLoginPage"
 check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "getVerifyToken"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "getLoginToken"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "quitLoginPage"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "quitPrivacyPage"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "setProtocolChecked"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "queryCheckBoxIsChecked"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "privacyAnimationStart"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "checkBoxAnimationStart"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "hideLoginLoading"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "getVersion"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "expandAuthPageCheckedScope"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "setUIClickListener"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "setAuthListener"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "userControlAuthPageCancel"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "removeAuthRegisterXmlConfig"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "removeAuthRegisterViewConfig"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "removePrivacyAuthRegisterViewConfig"
+check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "removePrivacyRegisterXmlConfig"
 check_android_method "com/mobile/auth/gatewayauth/PhoneNumberAuthHelper" "SERVICE_TYPE_AUTH"
 check_android_method "com/mobile/auth/gatewayauth/model/TokenRet"         "fromJson"
 
 echo "✓ Android SDK validated"
 
+# Clean stale AARs before copying: if the SDK version's filename changed
+# (e.g. auth_number_product-2.14.23-...aar → 2.15.0-...aar), leaving the
+# old jar in libs/ would let gradle's fileTree(libs/*.aar) bundle BOTH
+# versions and fail with duplicate class definitions at compile time.
 mkdir -p "$ROOT/android/libs"
+rm -f "$ROOT/android/libs"/*.aar
 cp "$ANDROID_SDK_DIR"/*.aar "$ROOT/android/libs/"
 echo "✓ Android AARs imported to android/libs/"
 
@@ -123,11 +146,28 @@ check_ios_method "sharedInstance"
 check_ios_method "setAuthSDKInfo"
 check_ios_method "checkEnvAvailableWithAuthType"
 check_ios_method "accelerateVerifyWithTimeout"
+check_ios_method "accelerateLoginPageWithTimeout"
 check_ios_method "getVerifyTokenWithTimeout"
+check_ios_method "getLoginTokenWithTimeout"
+check_ios_method "cancelLoginVCAnimated"
+check_ios_method "setCheckboxIsChecked"
+check_ios_method "queryCheckBoxIsChecked"
+check_ios_method "privacyAnimationStart"
+check_ios_method "checkboxAnimationStart"
+check_ios_method "closePrivactAlertView"
+check_ios_method "hideLoginLoading"
+check_ios_method "getVersion"
 
 echo "✓ iOS SDK validated"
 
+# Replace xcframeworks atomically — `cp -r foo.xcframework existing-dir/`
+# on macOS MERGES into an existing same-named dir rather than replacing it,
+# leaving stale resources behind when an SDK upgrade removes assets (e.g. a
+# renamed icon would ship both old and new in the app bundle). Nuke all
+# *.xcframework entries first, then copy the new set in fresh — also
+# handles the rare case of the SDK dropping a vendored framework entirely.
 mkdir -p "$ROOT/ios/aliyun_number_auth/Frameworks"
+rm -rf "$ROOT/ios/aliyun_number_auth/Frameworks"/*.xcframework
 cp -r "$IOS_XCFW_DIR"/*.xcframework "$ROOT/ios/aliyun_number_auth/Frameworks/"
 echo "✓ iOS xcframeworks imported to ios/aliyun_number_auth/Frameworks/"
 

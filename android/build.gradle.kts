@@ -75,4 +75,13 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
+    // Aliyun SDK runtime dependencies. The AARs in libs/ ship classes that
+    // extend androidx.appcompat.app.AppCompatActivity (LoginAuthActivity,
+    // PrivacyDialogActivity, AuthWebVeiwActivity) and use androidx.activity's
+    // OnBackPressedDispatcher. Because we import the AARs via fileTree, their
+    // POM-declared transitive deps are NOT resolved by gradle — we must
+    // declare them ourselves or the auth page will crash with
+    // ClassNotFoundException at runtime on hosts that don't transitively
+    // pull in appcompat (which a bare Flutter app may not).
+    implementation("androidx.appcompat:appcompat:1.7.0")
 }
