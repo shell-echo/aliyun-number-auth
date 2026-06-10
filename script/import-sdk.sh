@@ -106,14 +106,45 @@ check_android_method "com/mobile/auth/gatewayauth/model/TokenRet"         "fromJ
 
 echo "✓ Android SDK validated"
 
-# Clean stale AARs before copying: if the SDK version's filename changed
-# (e.g. auth_number_product-2.14.23-...aar → 2.15.0-...aar), leaving the
-# old jar in libs/ would let gradle's fileTree(libs/*.aar) bundle BOTH
-# versions and fail with duplicate class definitions at compile time.
-mkdir -p "$ROOT/android/libs"
-rm -f "$ROOT/android/libs"/*.aar
-cp "$ANDROID_SDK_DIR"/*.aar "$ROOT/android/libs/"
-echo "✓ Android AARs imported to android/libs/"
+# Install AARs into a local Maven repository under android/libs-maven/.
+# AGP 8+ rejects direct local .aar file deps in a library that produces an
+# AAR (hasLocalAarDeps), but accepts AARs resolved through a Maven repo —
+# even a local one. The plugin's build.gradle.kts wires this repo into both
+# its own project and (via rootProject.allprojects) the consuming app.
+#
+# Each .aar in the vendor zip is named "<artifact>-<version>[-suffix].aar".
+# We parse out artifact + a semver-shaped version and lay them out as:
+#   libs-maven/com/aliyun/atauth/<artifact>/<version>/<artifact>-<version>.aar
+#   libs-maven/com/aliyun/atauth/<artifact>/<version>/<artifact>-<version>.pom
+MAVEN_GROUP_DIR="$ROOT/android/libs-maven/com/aliyun/atauth"
+rm -rf "$MAVEN_GROUP_DIR"
+for src_aar in "$ANDROID_SDK_DIR"/*.aar; do
+  filename=$(basename "$src_aar")
+  # Match: <artifact>-<version> where version is N.N[.N] possibly followed by
+  # -<suffix>. The artifact is everything up to the first digit-prefixed token.
+  if [[ "$filename" =~ ^(.+)-([0-9]+\.[0-9]+(\.[0-9]+)?)(-.*)?\.aar$ ]]; then
+    artifact="${BASH_REMATCH[1]}"
+    version="${BASH_REMATCH[2]}"
+  else
+    echo "error: could not parse artifact/version from $filename" >&2
+    exit 1
+  fi
+  target_dir="$MAVEN_GROUP_DIR/$artifact/$version"
+  mkdir -p "$target_dir"
+  cp "$src_aar" "$target_dir/$artifact-$version.aar"
+  cat > "$target_dir/$artifact-$version.pom" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.aliyun.atauth</groupId>
+  <artifactId>$artifact</artifactId>
+  <version>$version</version>
+  <packaging>aar</packaging>
+</project>
+EOF
+  echo "  ✓ $artifact:$version"
+done
+echo "✓ Android AARs imported to android/libs-maven/"
 
 # iOS
 unzip -q "$IOS_ZIP" -d "$IOS_TMP"
