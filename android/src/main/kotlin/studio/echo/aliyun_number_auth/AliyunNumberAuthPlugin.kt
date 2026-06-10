@@ -369,7 +369,7 @@ class AliyunNumberAuthPlugin :
                 // Surface a hard failure if the SDK API name changed, instead of returning
                 // a stale hard-coded string the caller would mistake for the real version.
                 try {
-                    result.success(helper.getVersion())
+                    result.success(PhoneNumberAuthHelper.getVersion())
                 } catch (e: Throwable) {
                     result.error(CODE_FAILED, "getVersion unavailable: ${e.message}", null)
                 }
@@ -482,7 +482,7 @@ class AliyunNumberAuthPlugin :
         val cbCheckColor     = config["checkBoxCheckColor"]?.let { toAndroidColor(it) } ?: Color.WHITE
         val cbCircle         = config["checkBoxCircle"] as? Boolean ?: false
         val cbSizePx         = (cbSizeDp * density).roundToInt().coerceAtLeast(1)
-        val cbInnerPaddingPx = ((config["checkBoxInnerPadding"] as? Double ?: 3.0) * density)
+        val cbInnerPaddingPx = ((config["checkBoxInnerPadding"] as? Double ?: 3.0) * density).toFloat()
         builder.setCheckedImgDrawable(
             buildCheckboxDrawable(checked = true,  fillColor = cbFillColor, checkColor = cbCheckColor,
                                   circle = cbCircle, sizePx = cbSizePx, innerPaddingPx = cbInnerPaddingPx)
