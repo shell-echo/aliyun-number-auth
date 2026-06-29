@@ -4,18 +4,29 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.ColorFilter
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.View
+import android.widget.FrameLayout
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
+import com.mobile.auth.gatewayauth.AuthRegisterViewConfig
 import com.mobile.auth.gatewayauth.AuthUIConfig
 import com.mobile.auth.gatewayauth.AuthUIControlClickListener
 import com.mobile.auth.gatewayauth.PhoneNumberAuthHelper
@@ -412,7 +423,8 @@ class AliyunNumberAuthPlugin :
             builder.setDialogHeight(dialogHeightDp)
             builder.setTapAuthPageMaskClosePage(config["tapBackgroundToClose"] as? Boolean ?: true)
             // maskColor / maskAlpha: no equivalent API in the Android SDK for dialog mode.
-            // backgroundColor: apply as the content-area drawable (same API used in full-screen).
+            // backgroundColor/backgroundImageData: apply as the content-area drawable
+            // (same API used in full-screen). Image wins when both are set.
             config["backgroundColor"]?.let { color ->
                 runCatching {
                     builder.setPageBackgroundDrawable(
@@ -420,6 +432,14 @@ class AliyunNumberAuthPlugin :
                     )
                 }
             }
+            (config["backgroundImageData"] as? ByteArray)?.let { bytes ->
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bmp ->
+                    builder.setPageBackgroundDrawable(
+                        buildBackgroundDrawable(bmp, config["backgroundImageContentMode"] as? String)
+                    )
+                }
+            }
+            registerDragHandleView(config, density)
         }
         // presentDirection / alertBarVisible / alertAvoidsKeyboard: iOS-only SDK features.
 
@@ -546,7 +566,7 @@ class AliyunNumberAuthPlugin :
             builder.setWebNavReturnImgDrawable(buildBackArrowDrawable(toAndroidColor(it)))
         }
 
-        // ── Background image (full-screen mode only) ──────────────────────────
+        // ── Background image (full-screen mode) ───────────────────────────────
         if (!dialogMode) {
             config["backgroundColor"]?.let { color ->
                 runCatching {
@@ -557,7 +577,9 @@ class AliyunNumberAuthPlugin :
             }
             (config["backgroundImageData"] as? ByteArray)?.let { bytes ->
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bmp ->
-                    builder.setPageBackgroundDrawable(BitmapDrawable(context.resources, bmp))
+                    builder.setPageBackgroundDrawable(
+                        buildBackgroundDrawable(bmp, config["backgroundImageContentMode"] as? String)
+                    )
                 }
             }
         }
@@ -623,6 +645,111 @@ class AliyunNumberAuthPlugin :
     }
 
     // ── Image / Drawable helpers ───────────────────────────────────────────────
+
+    private fun registerDragHandleView(config: Map<String, Any>, density: Float) {
+        if (config["dragHandleVisible"] as? Boolean != true) return
+        val widthPx = ((config["dragHandleWidth"] as? Double ?: 36.0) * density)
+            .roundToInt()
+            .coerceAtLeast(1)
+        val heightPx = ((config["dragHandleHeight"] as? Double ?: 4.0) * density)
+            .roundToInt()
+            .coerceAtLeast(1)
+        val topMarginPx = ((config["dragHandleTopOffset"] as? Double ?: 8.0) * density)
+            .roundToInt()
+            .coerceAtLeast(0)
+        val color = config["dragHandleColor"]?.let { toAndroidColor(it) }
+            ?: Color.parseColor("#D8D8D8")
+        val radius = heightPx / 2f
+        val handle = View(context).apply {
+            background = GradientDrawable().apply {
+                setColor(color)
+                cornerRadius = radius
+            }
+            layoutParams = FrameLayout.LayoutParams(widthPx, heightPx).apply {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                topMargin = topMarginPx
+            }
+        }
+        runCatching {
+            helper.addAuthRegistViewConfig(
+                "aliyun_number_auth_drag_handle",
+                AuthRegisterViewConfig.Builder()
+                    .setView(handle)
+                    .setRootViewId(AuthRegisterViewConfig.RootViewId.ROOT_VIEW_ID_BODY)
+                    .build()
+            )
+        }
+    }
+
+    private fun buildBackgroundDrawable(bitmap: Bitmap, contentMode: String?): Drawable {
+        return BackgroundBitmapDrawable(bitmap, contentMode ?: "cover")
+    }
+
+    private class BackgroundBitmapDrawable(
+        private val bitmap: Bitmap,
+        private val contentMode: String,
+    ) : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        private val tilePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+            shader = BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+        }
+        private val dst = RectF()
+
+        override fun draw(canvas: Canvas) {
+            val b = bounds
+            if (b.isEmpty || bitmap.width <= 0 || bitmap.height <= 0) return
+            if (contentMode == "tile") {
+                canvas.drawRect(b, tilePaint)
+                return
+            }
+            val viewW = b.width().toFloat()
+            val viewH = b.height().toFloat()
+            val bmpW = bitmap.width.toFloat()
+            val bmpH = bitmap.height.toFloat()
+
+            when (contentMode) {
+                "fill" -> dst.set(b)
+                "center" -> {
+                    val left = b.left + (viewW - bmpW) / 2f
+                    val top = b.top + (viewH - bmpH) / 2f
+                    dst.set(left, top, left + bmpW, top + bmpH)
+                }
+                "contain" -> {
+                    val scale = min(viewW / bmpW, viewH / bmpH)
+                    setScaledRect(b, bmpW * scale, bmpH * scale)
+                }
+                else -> {
+                    val scale = max(viewW / bmpW, viewH / bmpH)
+                    setScaledRect(b, bmpW * scale, bmpH * scale)
+                }
+            }
+            val saveCount = canvas.save()
+            canvas.clipRect(b)
+            canvas.drawBitmap(bitmap, null, dst, paint)
+            canvas.restoreToCount(saveCount)
+        }
+
+        private fun setScaledRect(bounds: Rect, width: Float, height: Float) {
+            val left = bounds.left + (bounds.width() - width) / 2f
+            val top = bounds.top + (bounds.height() - height) / 2f
+            dst.set(left, top, left + width, top + height)
+        }
+
+        override fun setAlpha(alpha: Int) {
+            paint.alpha = alpha
+            tilePaint.alpha = alpha
+            invalidateSelf()
+        }
+
+        override fun setColorFilter(colorFilter: ColorFilter?) {
+            paint.colorFilter = colorFilter
+            tilePaint.colorFilter = colorFilter
+            invalidateSelf()
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+    }
 
     private fun buildCheckboxDrawable(
         checked: Boolean,

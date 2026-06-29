@@ -7,9 +7,7 @@ import 'package:aliyun_number_auth/aliyun_number_auth_platform_interface.dart';
 import 'package:aliyun_number_auth/aliyun_number_auth_method_channel.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
-class MockAliyunNumberAuthPlatform
-    with MockPlatformInterfaceMixin
-    implements AliyunNumberAuthPlatform {
+class MockAliyunNumberAuthPlatform with MockPlatformInterfaceMixin implements AliyunNumberAuthPlatform {
   /// Counts checkEnvAvailable calls — used by the dedupe-concurrent-checkEnv test.
   int checkEnvCallCount = 0;
 
@@ -47,10 +45,7 @@ class MockAliyunNumberAuthPlatform
   }
 
   @override
-  Future<String> getMobileToken({
-    Duration timeout = const Duration(seconds: 10),
-    Map<String, dynamic>? uiConfig,
-  }) {
+  Future<String> getMobileToken({Duration timeout = const Duration(seconds: 10), Map<String, dynamic>? uiConfig}) {
     lastGetMobileTokenUiConfig = uiConfig;
     return Future.value('mock_mobile_token');
   }
@@ -71,10 +66,7 @@ class MockAliyunNumberAuthPlatform
   void setAuthPageShownCallback(void Function()? callback) {}
 
   @override
-  Future<void> dismissLoginPage({
-    bool animated = true,
-    bool waitForCompletion = false,
-  }) {
+  Future<void> dismissLoginPage({bool animated = true, bool waitForCompletion = false}) {
     dismissLoginPageCallCount++;
     lastDismissWaitForCompletion = waitForCompletion;
     final err = dismissError;
@@ -106,9 +98,7 @@ class MockAliyunNumberAuthPlatform
 
 /// Mock platform whose [checkEnvAvailable] always throws — used to seed a
 /// real [AliyunAuthController.lastError] in regression tests.
-class _ThrowingMockPlatform
-    with MockPlatformInterfaceMixin
-    implements AliyunNumberAuthPlatform {
+class _ThrowingMockPlatform with MockPlatformInterfaceMixin implements AliyunNumberAuthPlatform {
   @override
   Future<bool> checkEnvAvailable({AliyunAuthType type = AliyunAuthType.loginToken}) {
     throw const AliyunNumberAuthException('600009', 'mock unknown carrier');
@@ -120,18 +110,12 @@ class _ThrowingMockPlatform
 
 /// Mock platform whose checkEnv succeeds but getMobileToken fails — used to
 /// verify the login-error notification path.
-class _LoginErrorMockPlatform
-    with MockPlatformInterfaceMixin
-    implements AliyunNumberAuthPlatform {
+class _LoginErrorMockPlatform with MockPlatformInterfaceMixin implements AliyunNumberAuthPlatform {
   @override
-  Future<bool> checkEnvAvailable({AliyunAuthType type = AliyunAuthType.loginToken}) =>
-      Future.value(true);
+  Future<bool> checkEnvAvailable({AliyunAuthType type = AliyunAuthType.loginToken}) => Future.value(true);
 
   @override
-  Future<String> getMobileToken({
-    Duration timeout = const Duration(seconds: 10),
-    Map<String, dynamic>? uiConfig,
-  }) {
+  Future<String> getMobileToken({Duration timeout = const Duration(seconds: 10), Map<String, dynamic>? uiConfig}) {
     throw const AliyunNumberAuthException('700000', 'mock user cancelled');
   }
 
@@ -178,8 +162,7 @@ void main() {
     });
 
     test('checkEnvAvailable (verifyToken)', () async {
-      expect(
-          await AliyunNumberAuth.checkEnvAvailable(type: AliyunAuthType.verifyToken), true);
+      expect(await AliyunNumberAuth.checkEnvAvailable(type: AliyunAuthType.verifyToken), true);
     });
 
     test('preload completes without error', () async {
@@ -270,6 +253,11 @@ void main() {
         expect(map['alertBarVisible'], false);
         expect(map['expandCheckboxTapScope'], false);
         expect(map['privacyOperatorUnderline'], false);
+        expect(map['backgroundImageContentMode'], 'cover');
+        expect(map['dragHandleVisible'], false);
+        expect(map['dragHandleWidth'], 36.0);
+        expect(map['dragHandleHeight'], 4.0);
+        expect(map['dragHandleTopOffset'], 8.0);
       });
 
       test('toMap includes nullable fields when set', () {
@@ -281,9 +269,15 @@ void main() {
           privacyOperatorIndex: 1,
           alertBarVisible: true,
           alertTitle: '请确认',
+          dragHandleVisible: true,
+          dragHandleColor: Color(0xFFCCCCCC),
+          dragHandleWidth: 40,
+          dragHandleHeight: 5,
+          dragHandleTopOffset: 10,
           expandCheckboxTapScope: true,
           privacyOperatorUnderline: true,
           presentDirection: AliyunAuthPresentDirection.right,
+          backgroundImageContentMode: AliyunAuthBackgroundImageContentMode.contain,
         );
         final map = cfg.toMap();
         expect(map['loginBtnText'], '测试');
@@ -293,9 +287,15 @@ void main() {
         expect(map['privacyOperatorIndex'], 1);
         expect(map['alertBarVisible'], true);
         expect(map['alertTitle'], '请确认');
+        expect(map['dragHandleVisible'], true);
+        expect(map['dragHandleColor'], 0xFFCCCCCC);
+        expect(map['dragHandleWidth'], 40);
+        expect(map['dragHandleHeight'], 5);
+        expect(map['dragHandleTopOffset'], 10);
         expect(map['expandCheckboxTapScope'], true);
         expect(map['privacyOperatorUnderline'], true);
         expect(map['presentDirection'], 'right');
+        expect(map['backgroundImageContentMode'], 'contain');
       });
 
       test('copyWith overrides specified fields', () {
@@ -304,10 +304,16 @@ void main() {
           loginBtnText: 'B',
           checkBoxChecked: true,
           presentDirection: AliyunAuthPresentDirection.left,
+          backgroundImageContentMode: AliyunAuthBackgroundImageContentMode.fill,
+          dragHandleVisible: true,
+          dragHandleWidth: 44,
         );
         expect(updated.loginBtnText, 'B');
         expect(updated.checkBoxChecked, true);
         expect(updated.presentDirection, AliyunAuthPresentDirection.left);
+        expect(updated.backgroundImageContentMode, AliyunAuthBackgroundImageContentMode.fill);
+        expect(updated.dragHandleVisible, true);
+        expect(updated.dragHandleWidth, 44);
         // Other fields unchanged
         expect(updated.dialogMode, base.dialogMode);
         expect(updated.cornerRadius, base.cornerRadius);
@@ -325,10 +331,7 @@ void main() {
         // it impossible to clear a previously-set nullable field. Now each
         // nullable parameter defaults to a private sentinel, so passing the
         // literal `null` actually clears the field.
-        const base = AliyunAuthUIConfig(
-          sloganText: 'foo',
-          privacyOperatorIndex: 2,
-        );
+        const base = AliyunAuthUIConfig(sloganText: 'foo', privacyOperatorIndex: 2);
         expect(base.sloganText, 'foo');
         final cleared = base.copyWith(sloganText: null);
         expect(cleared.sloganText, isNull);
@@ -340,20 +343,11 @@ void main() {
         // Regression: iOS SDK silently ignores numberFontSize < 16, so we
         // surface it as an assertion failure in debug to catch the mistake
         // before it hits a device.
-        expect(
-          () => const AliyunAuthUIConfig(numberFontSize: 14).toMap(),
-          throwsA(isA<AssertionError>()),
-        );
+        expect(() => const AliyunAuthUIConfig(numberFontSize: 14).toMap(), throwsA(isA<AssertionError>()));
         // >= 16 is fine.
-        expect(
-          const AliyunAuthUIConfig(numberFontSize: 16).toMap()['numberFontSize'],
-          16,
-        );
+        expect(const AliyunAuthUIConfig(numberFontSize: 16).toMap()['numberFontSize'], 16);
         // null is also fine.
-        expect(
-          const AliyunAuthUIConfig().toMap().containsKey('numberFontSize'),
-          false,
-        );
+        expect(const AliyunAuthUIConfig().toMap().containsKey('numberFontSize'), false);
       });
 
       test('== and hashCode: identical configs are equal', () {
@@ -389,8 +383,7 @@ void main() {
         // different configs (which would cause needless rebuilds).
         final bytesA = Uint8List.fromList([1, 2, 3, 4]);
         final bytesB = Uint8List.fromList([1, 2, 3, 4]);
-        expect(identical(bytesA, bytesB), false,
-            reason: 'precondition: distinct instances');
+        expect(identical(bytesA, bytesB), false, reason: 'precondition: distinct instances');
         final cfgA = AliyunAuthUIConfig(logoImageData: bytesA);
         final cfgB = AliyunAuthUIConfig(logoImageData: bytesB);
         expect(cfgA, cfgB);
@@ -405,6 +398,14 @@ void main() {
         expect(AliyunAuthPresentDirection.right.name, 'right');
         expect(AliyunAuthPresentDirection.top.name, 'top');
         expect(AliyunAuthPresentDirection.left.name, 'left');
+      });
+
+      test('AliyunAuthBackgroundImageContentMode enum values are serialised correctly', () {
+        expect(AliyunAuthBackgroundImageContentMode.cover.name, 'cover');
+        expect(AliyunAuthBackgroundImageContentMode.contain.name, 'contain');
+        expect(AliyunAuthBackgroundImageContentMode.fill.name, 'fill');
+        expect(AliyunAuthBackgroundImageContentMode.center.name, 'center');
+        expect(AliyunAuthBackgroundImageContentMode.tile.name, 'tile');
       });
     });
 
@@ -466,8 +467,7 @@ void main() {
         final f1 = c.login();
         await expectLater(
           c.login(),
-          throwsA(isA<AliyunNumberAuthException>()
-              .having((e) => e.code, 'code', AliyunAuthCode.busy)),
+          throwsA(isA<AliyunNumberAuthException>().having((e) => e.code, 'code', AliyunAuthCode.busy)),
         );
         await f1;
         c.dispose();
@@ -554,11 +554,12 @@ void main() {
         c.dispose();
         await expectLater(
           c.login(),
-          throwsA(anyOf(
-            isA<AssertionError>(),
-            isA<AliyunNumberAuthException>()
-                .having((e) => e.code, 'code', AliyunAuthCode.cancelled),
-          )),
+          throwsA(
+            anyOf(
+              isA<AssertionError>(),
+              isA<AliyunNumberAuthException>().having((e) => e.code, 'code', AliyunAuthCode.cancelled),
+            ),
+          ),
         );
         // No additional platform call (only the prior checkEnv).
         expect(fakePlatform.checkEnvCallCount, 1);
@@ -590,8 +591,7 @@ void main() {
         c.dispose();
       });
 
-      test('lastError change notifies even when status stays the same',
-          () async {
+      test('lastError change notifies even when status stays the same', () async {
         // Regression: when checkEnv fails twice in a row, the second failure
         // would set _lastError but not notify because _status (=unavailable)
         // was unchanged from the first failure.
@@ -623,8 +623,7 @@ void main() {
         fakePlatform.checkEnvCallCount = 0;
         final c = AliyunAuthController(autoCheck: false);
         await Future.wait([c.checkEnv(), c.checkEnv(), c.checkEnv()]);
-        expect(fakePlatform.checkEnvCallCount, 1,
-            reason: 'three concurrent calls should result in one platform hit');
+        expect(fakePlatform.checkEnvCallCount, 1, reason: 'three concurrent calls should result in one platform hit');
         c.dispose();
       });
 
@@ -635,15 +634,12 @@ void main() {
       // best, double-close races at worst).
 
       test('autoDismissOnSuccess=true + suspendDisMissVC=true → dismisses '
-           'with waitForCompletion=true', () async {
+          'with waitForCompletion=true', () async {
         fakePlatform.dismissLoginPageCallCount = 0;
         fakePlatform.lastDismissWaitForCompletion = null;
         final c = AliyunAuthController(autoCheck: false);
         await c.checkEnv();
-        final token = await c.login(
-          uiConfig: const AliyunAuthUIConfig(suspendDisMissVC: true),
-          autoDismissOnSuccess: true,
-        );
+        final token = await c.login(uiConfig: const AliyunAuthUIConfig(suspendDisMissVC: true), autoDismissOnSuccess: true);
         expect(token, 'mock_mobile_token');
         expect(fakePlatform.dismissLoginPageCallCount, 1);
         // The whole point of auto-dismiss is letting the caller navigate
@@ -654,14 +650,14 @@ void main() {
       });
 
       test('autoDismissOnSuccess=true + suspendDisMissVC=false → does NOT '
-           'dismiss (SDK auto-closes)', () async {
+          'dismiss (SDK auto-closes)', () async {
         // Without suspendDisMissVC the SDK closes the auth page itself.
         // Issuing an extra dismiss would race the SDK's own close.
         fakePlatform.dismissLoginPageCallCount = 0;
         final c = AliyunAuthController(autoCheck: false);
         await c.checkEnv();
         final token = await c.login(
-          uiConfig: const AliyunAuthUIConfig(),  // suspendDisMissVC defaults false
+          uiConfig: const AliyunAuthUIConfig(), // suspendDisMissVC defaults false
           autoDismissOnSuccess: true,
         );
         expect(token, 'mock_mobile_token');
@@ -670,34 +666,28 @@ void main() {
       });
 
       test('autoDismissOnSuccess=false (default) → never dismisses, even with '
-           'suspendDisMissVC=true', () async {
+          'suspendDisMissVC=true', () async {
         // Backward-compat path: existing callers that set suspendDisMissVC
         // and dismiss manually shouldn't get a surprise extra dismiss.
         fakePlatform.dismissLoginPageCallCount = 0;
         final c = AliyunAuthController(autoCheck: false);
         await c.checkEnv();
-        final token = await c.login(
-          uiConfig: const AliyunAuthUIConfig(suspendDisMissVC: true),
-        );
+        final token = await c.login(uiConfig: const AliyunAuthUIConfig(suspendDisMissVC: true));
         expect(token, 'mock_mobile_token');
         expect(fakePlatform.dismissLoginPageCallCount, 0);
         c.dispose();
       });
 
       test('dismiss failure during autoDismissOnSuccess does not swallow '
-           'the token', () async {
+          'the token', () async {
         // Auth page may already be gone, plugin detaching, etc. — the
         // dismiss attempt is best-effort and must not block the token
         // from reaching the caller.
         fakePlatform.dismissLoginPageCallCount = 0;
-        fakePlatform.dismissError = const AliyunNumberAuthException(
-          AliyunAuthCode.failed, 'mock dismiss failed');
+        fakePlatform.dismissError = const AliyunNumberAuthException(AliyunAuthCode.failed, 'mock dismiss failed');
         final c = AliyunAuthController(autoCheck: false);
         await c.checkEnv();
-        final token = await c.login(
-          uiConfig: const AliyunAuthUIConfig(suspendDisMissVC: true),
-          autoDismissOnSuccess: true,
-        );
+        final token = await c.login(uiConfig: const AliyunAuthUIConfig(suspendDisMissVC: true), autoDismissOnSuccess: true);
         expect(token, 'mock_mobile_token');
         expect(fakePlatform.dismissLoginPageCallCount, 1);
         // Reset for any subsequent tests in the group.
@@ -710,21 +700,17 @@ void main() {
       testWidgets('asserts when controller prop is hot-swapped', (tester) async {
         final ctrl1 = AliyunAuthController(autoCheck: false);
         final ctrl2 = AliyunAuthController(autoCheck: false);
-        await tester.pumpWidget(MaterialApp(
-          home: AliyunAuthWidget(
-            controller: ctrl1,
-            onSuccess: (_) {},
-            builder: (_, _, _) => const SizedBox.shrink(),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AliyunAuthWidget(controller: ctrl1, onSuccess: (_) {}, builder: (_, _, _) => const SizedBox.shrink()),
           ),
-        ));
+        );
         // Rebuild with a different controller — must trip the debug assert.
-        await tester.pumpWidget(MaterialApp(
-          home: AliyunAuthWidget(
-            controller: ctrl2,
-            onSuccess: (_) {},
-            builder: (_, _, _) => const SizedBox.shrink(),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AliyunAuthWidget(controller: ctrl2, onSuccess: (_) {}, builder: (_, _, _) => const SizedBox.shrink()),
           ),
-        ));
+        );
         expect(tester.takeException(), isA<AssertionError>());
         ctrl1.dispose();
         ctrl2.dispose();

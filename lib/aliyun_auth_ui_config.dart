@@ -20,6 +20,24 @@ enum AliyunAuthPresentDirection {
   left,
 }
 
+/// How [AliyunAuthUIConfig.backgroundImageData] is fitted into the sheet/page.
+enum AliyunAuthBackgroundImageContentMode {
+  /// Scale to fill while preserving aspect ratio; edges may be cropped.
+  cover,
+
+  /// Scale to fit while preserving aspect ratio; empty space may remain.
+  contain,
+
+  /// Stretch to fill; aspect ratio may change.
+  fill,
+
+  /// Draw at intrinsic size, centered.
+  center,
+
+  /// Repeat the image at intrinsic size to fill the sheet/page.
+  tile,
+}
+
 /// UI configuration for the SDK authorization sheet shown during
 /// [AliyunNumberAuth.getMobileToken].
 ///
@@ -114,13 +132,22 @@ class AliyunAuthUIConfig {
     this.alertTitleColor,
     this.alertCloseButtonHidden = false,
     this.alertAvoidsKeyboard = false,
+    // ── Drag handle (dialog mode only) ─────────────────────────────────────
+    this.dragHandleVisible = false,
+    this.dragHandleColor,
+    this.dragHandleWidth = 36.0,
+    this.dragHandleHeight = 4.0,
+    this.dragHandleTopOffset = 8.0,
     // ── Advanced dialog layout (dialog mode only, iOS only) ──────────────────
     this.numberOffsetY,
     this.loginBtnOffsetY,
     this.loginBtnHeight,
     this.privacyAreaHeight,
-    // ── Background image (full-screen mode only) ─────────────────────────────
+    this.privacyHorizontalPadding,
+    this.privacyBottomOffset,
+    // ── Background image ────────────────────────────────────────────────────
     this.backgroundImageData,
+    this.backgroundImageContentMode = AliyunAuthBackgroundImageContentMode.cover,
     // ── Advanced behavior ────────────────────────────────────────────────────
     this.suspendDisMissVC = false,
   });
@@ -346,6 +373,26 @@ class AliyunAuthUIConfig {
   /// **iOS only.** Only applies when [dialogMode] is `true`.
   final bool alertAvoidsKeyboard;
 
+  // ── Drag handle (dialog mode only) ───────────────────────────────────────
+
+  /// Show a visual drag handle at the top of the bottom sheet.
+  ///
+  /// This is decorative only; the Aliyun SDK auth sheet is not made draggable.
+  /// Only applies when [dialogMode] is `true`.
+  final bool dragHandleVisible;
+
+  /// Color of the drag handle. Defaults to `#D8D8D8`.
+  final Color? dragHandleColor;
+
+  /// Width of the drag handle in logical pixels.
+  final double dragHandleWidth;
+
+  /// Height of the drag handle in logical pixels.
+  final double dragHandleHeight;
+
+  /// Distance from the sheet top to the drag handle in logical pixels.
+  final double dragHandleTopOffset;
+
   // ── Advanced dialog layout (dialog mode only, iOS only) ───────────────────
 
   /// Y position of the phone-number label from the dialog top (default 28 pt).
@@ -364,12 +411,22 @@ class AliyunAuthUIConfig {
   /// **iOS only.** Only applies when [dialogMode] is `true`.
   final double? privacyAreaHeight;
 
-  // ── Background image (full-screen mode only) ──────────────────────────────
+  /// Horizontal padding of the privacy + checkbox area from dialog edges.
+  /// **iOS only.** Only applies when [dialogMode] is `true`.
+  final double? privacyHorizontalPadding;
 
-  /// Raw PNG/JPEG bytes for the full-page background image.
+  /// Distance between the privacy + checkbox area and the dialog bottom.
+  /// **iOS only.** Only applies when [dialogMode] is `true`.
+  final double? privacyBottomOffset;
+
+  // ── Background image ──────────────────────────────────────────────────────
+
+  /// Raw PNG/JPEG bytes for the sheet/page background image.
   /// Use `rootBundle.load(...)` to load asset bytes.
-  /// Only applies when [dialogMode] is `false`.
   final Uint8List? backgroundImageData;
+
+  /// How [backgroundImageData] is fitted into the sheet/page.
+  final AliyunAuthBackgroundImageContentMode backgroundImageContentMode;
 
   // ── Advanced behavior ─────────────────────────────────────────────────────
 
@@ -415,86 +472,94 @@ class AliyunAuthUIConfig {
       '>= 16 for cross-platform consistency.',
     );
     return {
-        // Always-present non-nullable fields
-        'dialogMode': dialogMode,
-        'dialogHeight': dialogHeight,
-        'tapBackgroundToClose': tapBackgroundToClose,
-        'cornerRadius': cornerRadius,
-        'maskAlpha': maskAlpha,
-        'presentDirection': presentDirection.name,
-        'statusBarHidden': statusBarHidden,
-        'statusBarDarkText': statusBarDarkText,
-        'navHidden': navHidden,
-        'hideBackButton': hideBackButton,
-        'logoHidden': logoHidden,
-        'sloganHidden': sloganHidden,
-        'loginBtnText': loginBtnText,
-        'loginBtnCornerRadius': loginBtnCornerRadius,
-        'showLoginLoading': showLoginLoading,
-        'autoHideLoginLoading': autoHideLoginLoading,
-        'switchBtnHidden': switchBtnHidden,
-        'checkBoxChecked': checkBoxChecked,
-        'checkBoxHidden': checkBoxHidden,
-        'checkBoxSize': checkBoxSize,
-        'checkBoxCircle': checkBoxCircle,
-        'checkBoxVerticalCenter': checkBoxVerticalCenter,
-        'checkBoxInnerPadding': checkBoxInnerPadding,
-        'expandCheckboxTapScope': expandCheckboxTapScope,
-        'privacyOperatorIndex': privacyOperatorIndex,
-        'privacyCenterAlign': privacyCenterAlign,
-        'privacyOperatorUnderline': privacyOperatorUnderline,
-        'privacyVCIsCustomized': privacyVCIsCustomized,
-        'alertBarVisible': alertBarVisible,
-        'alertCloseButtonHidden': alertCloseButtonHidden,
-        'alertAvoidsKeyboard': alertAvoidsKeyboard,
-        'suspendDisMissVC': suspendDisMissVC,
-        // Nullable fields — only included when set
-        if (backgroundColor != null)       'backgroundColor':       backgroundColor!.toARGB32(),
-        if (maskColor != null)             'maskColor':             maskColor!.toARGB32(),
-        if (navColor != null)              'navColor':              navColor!.toARGB32(),
-        if (navTitle != null)              'navTitle':              navTitle,
-        if (navTitleColor != null)         'navTitleColor':         navTitleColor!.toARGB32(),
-        if (logoImageData != null)         'logoImageData':         logoImageData,
-        if (sloganText != null)            'sloganText':            sloganText,
-        if (sloganColor != null)           'sloganColor':           sloganColor!.toARGB32(),
-        if (sloganFontSize != null)        'sloganFontSize':        sloganFontSize,
-        if (numberColor != null)           'numberColor':           numberColor!.toARGB32(),
-        if (numberFontSize != null)        'numberFontSize':        numberFontSize,
-        if (loginBtnTextColor != null)     'loginBtnTextColor':     loginBtnTextColor!.toARGB32(),
-        if (loginBtnFontSize != null)      'loginBtnFontSize':      loginBtnFontSize,
-        if (loginBtnBgColor != null)       'loginBtnBgColor':       loginBtnBgColor!.toARGB32(),
-        if (switchBtnText != null)         'switchBtnText':         switchBtnText,
-        if (switchBtnColor != null)        'switchBtnColor':        switchBtnColor!.toARGB32(),
-        if (checkBoxColor != null)         'checkBoxColor':         checkBoxColor!.toARGB32(),
-        if (checkBoxCheckColor != null)    'checkBoxCheckColor':    checkBoxCheckColor!.toARGB32(),
-        if (privacyOne != null)            'privacyOne':            privacyOne,
-        if (privacyTwo != null)            'privacyTwo':            privacyTwo,
-        if (privacyThree != null)          'privacyThree':          privacyThree,
-        if (privacyConectTexts != null)    'privacyConectTexts':    privacyConectTexts,
-        if (privacyPreText != null)        'privacyPreText':        privacyPreText,
-        if (privacySufText != null)        'privacySufText':        privacySufText,
-        if (privacyOperatorPreText != null)'privacyOperatorPreText': privacyOperatorPreText,
-        if (privacyOperatorSufText != null)'privacyOperatorSufText': privacyOperatorSufText,
-        if (privacyColor != null)          'privacyColor':          privacyColor!.toARGB32(),
-        if (privacyLinkColor != null)      'privacyLinkColor':      privacyLinkColor!.toARGB32(),
-        if (privacyOperatorColor != null)  'privacyOperatorColor':  privacyOperatorColor!.toARGB32(),
-        if (privacyOneColor != null)       'privacyOneColor':       privacyOneColor!.toARGB32(),
-        if (privacyTwoColor != null)       'privacyTwoColor':       privacyTwoColor!.toARGB32(),
-        if (privacyThreeColor != null)     'privacyThreeColor':     privacyThreeColor!.toARGB32(),
-        if (privacyFontSize != null)       'privacyFontSize':       privacyFontSize,
-        if (privacyLineSpacing != null)    'privacyLineSpacing':    privacyLineSpacing,
-        if (privacyNavColor != null)       'privacyNavColor':       privacyNavColor!.toARGB32(),
-        if (privacyNavTitleColor != null)  'privacyNavTitleColor':  privacyNavTitleColor!.toARGB32(),
-        if (privacyNavBackColor != null)   'privacyNavBackColor':   privacyNavBackColor!.toARGB32(),
-        if (alertTitle != null)            'alertTitle':            alertTitle,
-        if (alertTitleBarColor != null)    'alertTitleBarColor':    alertTitleBarColor!.toARGB32(),
-        if (alertTitleColor != null)       'alertTitleColor':       alertTitleColor!.toARGB32(),
-        if (numberOffsetY != null)         'numberOffsetY':         numberOffsetY,
-        if (loginBtnOffsetY != null)       'loginBtnOffsetY':       loginBtnOffsetY,
-        if (loginBtnHeight != null)        'loginBtnHeight':        loginBtnHeight,
-        if (privacyAreaHeight != null)     'privacyAreaHeight':     privacyAreaHeight,
-        if (backgroundImageData != null)   'backgroundImageData':   backgroundImageData,
-      };
+      // Always-present non-nullable fields
+      'dialogMode': dialogMode,
+      'dialogHeight': dialogHeight,
+      'tapBackgroundToClose': tapBackgroundToClose,
+      'cornerRadius': cornerRadius,
+      'maskAlpha': maskAlpha,
+      'presentDirection': presentDirection.name,
+      'statusBarHidden': statusBarHidden,
+      'statusBarDarkText': statusBarDarkText,
+      'navHidden': navHidden,
+      'hideBackButton': hideBackButton,
+      'logoHidden': logoHidden,
+      'sloganHidden': sloganHidden,
+      'loginBtnText': loginBtnText,
+      'loginBtnCornerRadius': loginBtnCornerRadius,
+      'showLoginLoading': showLoginLoading,
+      'autoHideLoginLoading': autoHideLoginLoading,
+      'switchBtnHidden': switchBtnHidden,
+      'checkBoxChecked': checkBoxChecked,
+      'checkBoxHidden': checkBoxHidden,
+      'checkBoxSize': checkBoxSize,
+      'checkBoxCircle': checkBoxCircle,
+      'checkBoxVerticalCenter': checkBoxVerticalCenter,
+      'checkBoxInnerPadding': checkBoxInnerPadding,
+      'expandCheckboxTapScope': expandCheckboxTapScope,
+      'privacyOperatorIndex': privacyOperatorIndex,
+      'privacyCenterAlign': privacyCenterAlign,
+      'privacyOperatorUnderline': privacyOperatorUnderline,
+      'privacyVCIsCustomized': privacyVCIsCustomized,
+      'alertBarVisible': alertBarVisible,
+      'alertCloseButtonHidden': alertCloseButtonHidden,
+      'alertAvoidsKeyboard': alertAvoidsKeyboard,
+      'dragHandleVisible': dragHandleVisible,
+      'dragHandleWidth': dragHandleWidth,
+      'dragHandleHeight': dragHandleHeight,
+      'dragHandleTopOffset': dragHandleTopOffset,
+      'backgroundImageContentMode': backgroundImageContentMode.name,
+      'suspendDisMissVC': suspendDisMissVC,
+      // Nullable fields — only included when set
+      if (backgroundColor != null)       'backgroundColor':       backgroundColor!.toARGB32(),
+      if (maskColor != null)             'maskColor':             maskColor!.toARGB32(),
+      if (navColor != null)              'navColor':              navColor!.toARGB32(),
+      if (navTitle != null)              'navTitle':              navTitle,
+      if (navTitleColor != null)         'navTitleColor':         navTitleColor!.toARGB32(),
+      if (logoImageData != null)         'logoImageData':         logoImageData,
+      if (sloganText != null)            'sloganText':            sloganText,
+      if (sloganColor != null)           'sloganColor':           sloganColor!.toARGB32(),
+      if (sloganFontSize != null)        'sloganFontSize':        sloganFontSize,
+      if (numberColor != null)           'numberColor':           numberColor!.toARGB32(),
+      if (numberFontSize != null)        'numberFontSize':        numberFontSize,
+      if (loginBtnTextColor != null)     'loginBtnTextColor':     loginBtnTextColor!.toARGB32(),
+      if (loginBtnFontSize != null)      'loginBtnFontSize':      loginBtnFontSize,
+      if (loginBtnBgColor != null)       'loginBtnBgColor':       loginBtnBgColor!.toARGB32(),
+      if (switchBtnText != null)         'switchBtnText':         switchBtnText,
+      if (switchBtnColor != null)        'switchBtnColor':        switchBtnColor!.toARGB32(),
+      if (checkBoxColor != null)         'checkBoxColor':         checkBoxColor!.toARGB32(),
+      if (checkBoxCheckColor != null)    'checkBoxCheckColor':    checkBoxCheckColor!.toARGB32(),
+      if (privacyOne != null)            'privacyOne':            privacyOne,
+      if (privacyTwo != null)            'privacyTwo':            privacyTwo,
+      if (privacyThree != null)          'privacyThree':          privacyThree,
+      if (privacyConectTexts != null)    'privacyConectTexts':    privacyConectTexts,
+      if (privacyPreText != null)        'privacyPreText':        privacyPreText,
+      if (privacySufText != null)        'privacySufText':        privacySufText,
+      if (privacyOperatorPreText != null) 'privacyOperatorPreText': privacyOperatorPreText,
+      if (privacyOperatorSufText != null) 'privacyOperatorSufText': privacyOperatorSufText,
+      if (privacyColor != null)          'privacyColor':          privacyColor!.toARGB32(),
+      if (privacyLinkColor != null)      'privacyLinkColor':      privacyLinkColor!.toARGB32(),
+      if (privacyOperatorColor != null)  'privacyOperatorColor':  privacyOperatorColor!.toARGB32(),
+      if (privacyOneColor != null)       'privacyOneColor':       privacyOneColor!.toARGB32(),
+      if (privacyTwoColor != null)       'privacyTwoColor':       privacyTwoColor!.toARGB32(),
+      if (privacyThreeColor != null)     'privacyThreeColor':     privacyThreeColor!.toARGB32(),
+      if (privacyFontSize != null)       'privacyFontSize':       privacyFontSize,
+      if (privacyLineSpacing != null)    'privacyLineSpacing':    privacyLineSpacing,
+      if (privacyNavColor != null)       'privacyNavColor':       privacyNavColor!.toARGB32(),
+      if (privacyNavTitleColor != null)  'privacyNavTitleColor':  privacyNavTitleColor!.toARGB32(),
+      if (privacyNavBackColor != null)   'privacyNavBackColor':   privacyNavBackColor!.toARGB32(),
+      if (alertTitle != null)            'alertTitle':            alertTitle,
+      if (alertTitleBarColor != null)    'alertTitleBarColor':    alertTitleBarColor!.toARGB32(),
+      if (alertTitleColor != null)       'alertTitleColor':       alertTitleColor!.toARGB32(),
+      if (dragHandleColor != null)       'dragHandleColor':       dragHandleColor!.toARGB32(),
+      if (numberOffsetY != null)         'numberOffsetY':         numberOffsetY,
+      if (loginBtnOffsetY != null)       'loginBtnOffsetY':       loginBtnOffsetY,
+      if (loginBtnHeight != null)        'loginBtnHeight':        loginBtnHeight,
+      if (privacyAreaHeight != null)     'privacyAreaHeight':     privacyAreaHeight,
+      if (privacyHorizontalPadding != null) 'privacyHorizontalPadding': privacyHorizontalPadding,
+      if (privacyBottomOffset != null)   'privacyBottomOffset':   privacyBottomOffset,
+      if (backgroundImageData != null)   'backgroundImageData':   backgroundImageData,
+    };
   }
 
   // ── copyWith ──────────────────────────────────────────────────────────────
@@ -577,11 +642,19 @@ class AliyunAuthUIConfig {
     Object? alertTitleColor = _unset,
     bool? alertCloseButtonHidden,
     bool? alertAvoidsKeyboard,
+    bool? dragHandleVisible,
+    Object? dragHandleColor = _unset,
+    double? dragHandleWidth,
+    double? dragHandleHeight,
+    double? dragHandleTopOffset,
     Object? numberOffsetY = _unset,
     Object? loginBtnOffsetY = _unset,
     Object? loginBtnHeight = _unset,
     Object? privacyAreaHeight = _unset,
+    Object? privacyHorizontalPadding = _unset,
+    Object? privacyBottomOffset = _unset,
     Object? backgroundImageData = _unset,
+    AliyunAuthBackgroundImageContentMode? backgroundImageContentMode,
     bool? suspendDisMissVC,
   }) {
     return AliyunAuthUIConfig(
@@ -656,11 +729,19 @@ class AliyunAuthUIConfig {
         alertTitleColor:        _pick(alertTitleColor,        this.alertTitleColor),
         alertCloseButtonHidden: alertCloseButtonHidden ?? this.alertCloseButtonHidden,
         alertAvoidsKeyboard:    alertAvoidsKeyboard    ?? this.alertAvoidsKeyboard,
+        dragHandleVisible:      dragHandleVisible      ?? this.dragHandleVisible,
+        dragHandleColor:        _pick(dragHandleColor,        this.dragHandleColor),
+        dragHandleWidth:        dragHandleWidth        ?? this.dragHandleWidth,
+        dragHandleHeight:       dragHandleHeight       ?? this.dragHandleHeight,
+        dragHandleTopOffset:    dragHandleTopOffset    ?? this.dragHandleTopOffset,
         numberOffsetY:          _pick(numberOffsetY,          this.numberOffsetY),
         loginBtnOffsetY:        _pick(loginBtnOffsetY,        this.loginBtnOffsetY),
         loginBtnHeight:         _pick(loginBtnHeight,         this.loginBtnHeight),
         privacyAreaHeight:      _pick(privacyAreaHeight,      this.privacyAreaHeight),
+        privacyHorizontalPadding: _pick(privacyHorizontalPadding, this.privacyHorizontalPadding),
+        privacyBottomOffset:    _pick(privacyBottomOffset,    this.privacyBottomOffset),
         backgroundImageData:    _pick(backgroundImageData,    this.backgroundImageData),
+        backgroundImageContentMode: backgroundImageContentMode ?? this.backgroundImageContentMode,
         suspendDisMissVC:       suspendDisMissVC       ?? this.suspendDisMissVC,
       );
   }
@@ -742,11 +823,19 @@ class AliyunAuthUIConfig {
         alertTitleColor == other.alertTitleColor &&
         alertCloseButtonHidden == other.alertCloseButtonHidden &&
         alertAvoidsKeyboard == other.alertAvoidsKeyboard &&
+        dragHandleVisible == other.dragHandleVisible &&
+        dragHandleColor == other.dragHandleColor &&
+        dragHandleWidth == other.dragHandleWidth &&
+        dragHandleHeight == other.dragHandleHeight &&
+        dragHandleTopOffset == other.dragHandleTopOffset &&
         numberOffsetY == other.numberOffsetY &&
         loginBtnOffsetY == other.loginBtnOffsetY &&
         loginBtnHeight == other.loginBtnHeight &&
         privacyAreaHeight == other.privacyAreaHeight &&
+        privacyHorizontalPadding == other.privacyHorizontalPadding &&
+        privacyBottomOffset == other.privacyBottomOffset &&
         _bytesEqual(backgroundImageData, other.backgroundImageData) &&
+        backgroundImageContentMode == other.backgroundImageContentMode &&
         suspendDisMissVC == other.suspendDisMissVC;
   }
 
@@ -788,8 +877,11 @@ class AliyunAuthUIConfig {
         privacyNavColor, privacyNavTitleColor, privacyNavBackColor,
         alertBarVisible, alertTitle, alertTitleBarColor, alertTitleColor,
         alertCloseButtonHidden, alertAvoidsKeyboard,
+        dragHandleVisible, dragHandleColor, dragHandleWidth, dragHandleHeight,
+        dragHandleTopOffset,
         numberOffsetY, loginBtnOffsetY, loginBtnHeight, privacyAreaHeight,
-        backgroundImageData?.length,
+        privacyHorizontalPadding, privacyBottomOffset,
+        backgroundImageData?.length, backgroundImageContentMode,
         suspendDisMissVC,
       ]);
 

@@ -487,11 +487,12 @@ builder: (context, status, login) {
 logoImageData: (await rootBundle.load('assets/logo.png')).buffer.asUint8List(),
 ```
 
-#### 背景图（仅全屏模式）
+#### 背景图
 
 | 属性 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `backgroundImageData` | `Uint8List?` | — | 全屏背景图字节（PNG/JPEG），iOS + Android，仅 `dialogMode=false` |
+| `backgroundImageData` | `Uint8List?` | — | Sheet / 全屏背景图字节（PNG/JPEG），iOS + Android |
+| `backgroundImageContentMode` | `AliyunAuthBackgroundImageContentMode` | `cover` | 背景图填充方式：`cover` 裁切铺满 / `contain` 完整显示 / `fill` 拉伸 / `center` 居中 / `tile` 平铺 |
 
 #### Slogan
 
@@ -587,6 +588,16 @@ logoImageData: (await rootBundle.load('assets/logo.png')).buffer.asUint8List(),
 | `alertCloseButtonHidden` | `bool` | `false` | 隐藏标题栏右侧关闭按钮（×） |
 | `alertAvoidsKeyboard` | `bool` | `false` | 键盘弹起时 Sheet 自动上移避让，**iOS only** |
 
+#### Drag Handle（仅 `dialogMode=true`）
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `dragHandleVisible` | `bool` | `false` | 显示 Sheet 顶部视觉拖拽手柄，不提供真实拖拽交互 |
+| `dragHandleColor` | `Color?` | `#D8D8D8` | 手柄颜色 |
+| `dragHandleWidth` | `double` | `36` | 手柄宽度 |
+| `dragHandleHeight` | `double` | `4` | 手柄高度 |
+| `dragHandleTopOffset` | `double` | `8` | 手柄距离 Sheet 顶部的距离 |
+
 #### 高级行为
 
 | 属性 | 类型 | 默认值 | 说明 |
@@ -603,6 +614,8 @@ logoImageData: (await rootBundle.load('assets/logo.png')).buffer.asUint8List(),
 | `loginBtnOffsetY` | `double?` | `82` | 登录按钮距 sheet 顶部的 Y 坐标 |
 | `loginBtnHeight` | `double?` | `50` | 登录按钮高度 |
 | `privacyAreaHeight` | `double?` | `72` | 协议区域高度（贴近 sheet 底部） |
+| `privacyHorizontalPadding` | `double?` | 同登录按钮左右边距 | 协议区域距 sheet 左右边缘的距离 |
+| `privacyBottomOffset` | `double?` | `16` | 协议区域距 sheet 底部的距离 |
 
 ---
 
@@ -799,7 +812,7 @@ AliyunAuthWidget(
 | ✅ | 本机号码校验（`init` / `checkEnvAvailable` / `preload` / `getVerifyToken`） | ✅ | ✅ |
 | ✅ | 一键登录（`getMobileToken` / `dismissLoginPage` / `preloadLogin`） | ✅ | ✅ |
 | ✅ | 授权页 UI 定制（颜色 / 字体 / 按钮 / Checkbox / 协议 / 布局） | ✅ | ✅ |
-| ✅ | 全屏背景图（`backgroundImageData`） | ✅ | ✅ |
+| ✅ | Sheet / 全屏背景图（`backgroundImageData`） | ✅ | ✅ |
 | ✅ | 各协议独立颜色（`privacyOperatorColor` / `privacyOneColor` 等） | ✅ | ✅ |
 | ✅ | 协议文字细节（连接文字 / 运营商排序 / 下划线 / 行间距） | ✅ | ✅ |
 | ✅ | 登录按钮点击事件 + checkbox 状态（`onLoginButtonTap`） | ✅ | ✅ |

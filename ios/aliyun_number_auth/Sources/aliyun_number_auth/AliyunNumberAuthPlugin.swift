@@ -370,6 +370,13 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
     let model = TXCustomModel()
 
     let dialogMode = config["dialogMode"] as? Bool ?? true
+    let backgroundImageContentMode = config["backgroundImageContentMode"] as? String ?? "cover"
+    let backgroundImage: UIImage?
+    if let bytes = config["backgroundImageData"] as? FlutterStandardTypedData {
+      backgroundImage = UIImage(data: bytes.data)
+    } else {
+      backgroundImage = nil
+    }
 
     // ── Status bar ────────────────────────────────────────────────────────
     model.prefersStatusBarHidden  = config["statusBarHidden"] as? Bool ?? false
@@ -395,7 +402,13 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
       model.tapAuthPageMaskClosePage = tapToClose
       model.alertBlurViewColor  = argb(config["maskColor"]).map { UIColor(argb: $0) } ?? .black
       model.alertBlurViewAlpha  = CGFloat(maskAlpha)
-      model.alertContentViewColor = argb(config["backgroundColor"]).map { UIColor(argb: $0) } ?? .white
+      if backgroundImageContentMode == "tile", let backgroundImage = backgroundImage {
+        model.alertContentViewColor = UIColor(patternImage: backgroundImage)
+      } else {
+        model.alertContentViewColor = backgroundImage == nil
+          ? (argb(config["backgroundColor"]).map { UIColor(argb: $0) } ?? .white)
+          : .clear
+      }
 
       // ── Dialog title bar ────────────────────────────────────────────────
       let alertBarVisible = config["alertBarVisible"] as? Bool ?? false
@@ -413,12 +426,45 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
       }
       model.alertFrameChangeWithKeyboard = config["alertAvoidsKeyboard"] as? Bool ?? false
 
+      if config["dragHandleVisible"] as? Bool ?? false {
+        let handleWidth = CGFloat(config["dragHandleWidth"] as? Double ?? 36.0)
+        let handleHeight = CGFloat(config["dragHandleHeight"] as? Double ?? 4.0)
+        let handleTop = CGFloat(config["dragHandleTopOffset"] as? Double ?? 8.0)
+        let handleColor = argb(config["dragHandleColor"]).map { UIColor(argb: $0) }
+          ?? UIColor(red: 0.847, green: 0.847, blue: 0.847, alpha: 1.0)
+        var dragHandleView: UIView?
+        model.customViewBlock = { superCustomView in
+          let handle = UIView()
+          handle.backgroundColor = handleColor
+          handle.layer.cornerRadius = handleHeight / 2
+          handle.layer.masksToBounds = true
+          handle.isUserInteractionEnabled = false
+          superCustomView.addSubview(handle)
+          superCustomView.bringSubviewToFront(handle)
+          dragHandleView = handle
+        }
+        model.customViewLayoutBlock = { _, contentViewFrame, _, _, _, _, _, _, _, _ in
+          let containerWidth = dragHandleView?.superview?.bounds.width ?? contentViewFrame.width
+          dragHandleView?.frame = CGRect(
+            x: (containerWidth - handleWidth) / 2,
+            y: handleTop,
+            width: handleWidth,
+            height: handleHeight
+          )
+          if let handle = dragHandleView {
+            handle.superview?.bringSubviewToFront(handle)
+          }
+        }
+      }
+
       // ── Dialog-mode element layout ──────────────────────────────────────
       let hPad  = CGFloat(28)
       let numY  = CGFloat(config["numberOffsetY"]   as? Double ?? 28)
       let btnY  = CGFloat(config["loginBtnOffsetY"] as? Double ?? 82)
       let btnH  = CGFloat(config["loginBtnHeight"]  as? Double ?? 50)
       let privH = CGFloat(config["privacyAreaHeight"] as? Double ?? 72)
+      let privPad = CGFloat(config["privacyHorizontalPadding"] as? Double ?? Double(hPad))
+      let privBottom = CGFloat(config["privacyBottomOffset"] as? Double ?? 16)
 
       model.numberFrameBlock = { _, superViewSize, frame in
         CGRect(x: (superViewSize.width - frame.width) / 2,
@@ -432,8 +478,8 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
                y: btnY + btnH + 10, width: frame.width, height: frame.height)
       }
       model.privacyFrameBlock = { _, superViewSize, _ in
-        CGRect(x: hPad, y: superViewSize.height - privH - 16,
-               width: superViewSize.width - hPad * 2, height: privH)
+        CGRect(x: privPad, y: superViewSize.height - privH - privBottom,
+               width: superViewSize.width - privPad * 2, height: privH)
       }
 
     } else {
@@ -447,12 +493,10 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
         if let c = argb(config["navTitleColor"]) { attrs[.foregroundColor] = UIColor(argb: c) }
         model.navTitle = NSAttributedString(string: navTitle, attributes: attrs)
       }
-      if let bgInt = argb(config["backgroundColor"]) { model.backgroundColor = UIColor(argb: bgInt) }
-
-      // ── Background image (full-screen only) ─────────────────────────────
-      if let bytes = config["backgroundImageData"] as? FlutterStandardTypedData,
-         let img = UIImage(data: bytes.data) {
-        model.backgroundImage = img
+      if backgroundImageContentMode == "tile", let backgroundImage = backgroundImage {
+        model.backgroundColor = UIColor(patternImage: backgroundImage)
+      } else if let bgInt = argb(config["backgroundColor"]) {
+        model.backgroundColor = UIColor(argb: bgInt)
       }
 
       // ── Presentation direction ───────────────────────────────────────────
@@ -461,6 +505,16 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
       case "top":   model.presentDirection = .top
       case "left":  model.presentDirection = .left
       default:      break // .bottom is the SDK default
+      }
+    }
+
+    if let backgroundImage = backgroundImage, backgroundImageContentMode != "tile" {
+      model.backgroundImage = backgroundImage
+      switch backgroundImageContentMode {
+      case "contain": model.backgroundImageContentMode = .scaleAspectFit
+      case "fill":    model.backgroundImageContentMode = .scaleToFill
+      case "center":  model.backgroundImageContentMode = .center
+      default:        model.backgroundImageContentMode = .scaleAspectFill
       }
     }
 
