@@ -2,7 +2,8 @@ import 'aliyun_auth_code.dart';
 import 'aliyun_number_auth_platform_interface.dart';
 import 'aliyun_auth_ui_config.dart';
 
-export 'aliyun_number_auth_platform_interface.dart' show AliyunNumberAuthException, AliyunAuthType;
+export 'aliyun_number_auth_platform_interface.dart'
+    show AliyunNumberAuthException, AliyunAuthType;
 export 'aliyun_auth_code.dart';
 export 'aliyun_auth_ui_config.dart';
 export 'aliyun_auth_controller.dart';
@@ -48,7 +49,9 @@ class AliyunNumberAuth {
 
   /// Returns `true` if the device/network supports the requested auth type.
   /// Defaults to [AliyunAuthType.loginToken] (one-key login).
-  static Future<bool> checkEnvAvailable({AliyunAuthType type = AliyunAuthType.loginToken}) {
+  static Future<bool> checkEnvAvailable({
+    AliyunAuthType type = AliyunAuthType.loginToken,
+  }) {
     return AliyunNumberAuthPlatform.instance.checkEnvAvailable(type: type);
   }
 
@@ -64,7 +67,9 @@ class AliyunNumberAuth {
   ///
   /// Returns immediately — the preload runs in the background. Any preload errors
   /// are silently discarded by the SDK.
-  static Future<void> preloadLogin({Duration timeout = const Duration(seconds: 3)}) {
+  static Future<void> preloadLogin({
+    Duration timeout = const Duration(seconds: 3),
+  }) {
     return AliyunNumberAuthPlatform.instance.preloadLogin(timeout: timeout);
   }
 
@@ -72,7 +77,9 @@ class AliyunNumberAuth {
 
   /// Silent number-verification token (本机号码校验).
   /// No UI shown. Backend uses [token + phone number] to verify whether they match.
-  static Future<String> getVerifyToken({Duration timeout = const Duration(seconds: 10)}) {
+  static Future<String> getVerifyToken({
+    Duration timeout = const Duration(seconds: 10),
+  }) {
     return AliyunNumberAuthPlatform.instance.getVerifyToken(timeout: timeout);
   }
 

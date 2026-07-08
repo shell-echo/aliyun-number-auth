@@ -11,11 +11,12 @@ import 'aliyun_number_auth.dart';
 /// - [login] — non-null only when `status == AliyunAuthStatus.available`.
 ///   Pass to a button's `onPressed`; pressing it triggers the one-key login
 ///   flow and `onSuccess` / `onError` will fire on completion.
-typedef AliyunAuthBuilder = Widget Function(
-  BuildContext context,
-  AliyunAuthStatus status,
-  VoidCallback? login,
-);
+typedef AliyunAuthBuilder =
+    Widget Function(
+      BuildContext context,
+      AliyunAuthStatus status,
+      VoidCallback? login,
+    );
 
 /// A convenience widget that wires an [AliyunAuthController] into a builder.
 ///

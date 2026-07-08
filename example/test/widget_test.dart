@@ -16,15 +16,15 @@ void main() {
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (MethodCall call) async {
-      switch (call.method) {
-        case 'init':
-          return null;
-        case 'checkEnvAvailable':
-          return false; // simulate env not available
-        default:
-          return null;
-      }
-    });
+          switch (call.method) {
+            case 'init':
+              return null;
+            case 'checkEnvAvailable':
+              return false; // simulate env not available
+            default:
+              return null;
+          }
+        });
   });
 
   tearDown(() {
@@ -32,8 +32,9 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  testWidgets('App shows initializing status then transitions to ready',
-      (WidgetTester tester) async {
+  testWidgets('App shows initializing status then transitions to ready', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const MyApp());
 
     // Status begins as 'Initializing…' before _setup() completes.
@@ -46,14 +47,17 @@ void main() {
     expect(find.text('Ready'), findsOneWidget);
   });
 
-  testWidgets('Buttons are disabled when env is not available',
-      (WidgetTester tester) async {
+  testWidgets('Buttons are disabled when env is not available', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 
     // Both ElevatedButtons have onPressed = null (env not available),
     // so they are rendered as disabled.
-    final buttons = tester.widgetList<ElevatedButton>(find.byType(ElevatedButton));
+    final buttons = tester.widgetList<ElevatedButton>(
+      find.byType(ElevatedButton),
+    );
     for (final btn in buttons) {
       expect(btn.onPressed, isNull);
     }

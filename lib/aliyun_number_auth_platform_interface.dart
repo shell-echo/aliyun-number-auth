@@ -44,7 +44,8 @@ class AliyunNumberAuthException implements Exception {
   int get hashCode => Object.hash(code, message);
 
   @override
-  String toString() => 'AliyunNumberAuthException($code${message != null ? ': $message' : ''})';
+  String toString() =>
+      'AliyunNumberAuthException($code${message != null ? ': $message' : ''})';
 }
 
 /// Which authentication flow to probe with [AliyunNumberAuth.checkEnvAvailable].
@@ -84,7 +85,9 @@ abstract class AliyunNumberAuthPlatform extends PlatformInterface {
     throw UnimplementedError('init() has not been implemented.');
   }
 
-  Future<bool> checkEnvAvailable({AliyunAuthType type = AliyunAuthType.loginToken}) {
+  Future<bool> checkEnvAvailable({
+    AliyunAuthType type = AliyunAuthType.loginToken,
+  }) {
     throw UnimplementedError('checkEnvAvailable() has not been implemented.');
   }
 
@@ -96,7 +99,9 @@ abstract class AliyunNumberAuthPlatform extends PlatformInterface {
     throw UnimplementedError('preloadLogin() has not been implemented.');
   }
 
-  Future<String> getVerifyToken({Duration timeout = const Duration(seconds: 10)}) {
+  Future<String> getVerifyToken({
+    Duration timeout = const Duration(seconds: 10),
+  }) {
     throw UnimplementedError('getVerifyToken() has not been implemented.');
   }
 
@@ -108,7 +113,9 @@ abstract class AliyunNumberAuthPlatform extends PlatformInterface {
   }
 
   // Internal — used by AliyunNumberAuth.getMobileToken to route native events.
-  void setPrivacyLinkCallback(void Function(String url, String name)? callback) {}
+  void setPrivacyLinkCallback(
+    void Function(String url, String name)? callback,
+  ) {}
   void setSuspendedDismissCallback(VoidCallback? callback) {}
 
   /// Called when the user taps the login button, regardless of whether the

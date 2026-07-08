@@ -35,10 +35,7 @@ void main() {
   });
 
   test('init completes without error', () async {
-    await expectLater(
-      platform.init('android_sk', 'ios_sk'),
-      completes,
-    );
+    await expectLater(platform.init('android_sk', 'ios_sk'), completes);
   });
 
   test('checkEnvAvailable (loginToken — default)', () async {
@@ -46,7 +43,10 @@ void main() {
   });
 
   test('checkEnvAvailable (verifyToken)', () async {
-    expect(await platform.checkEnvAvailable(type: AliyunAuthType.verifyToken), true);
+    expect(
+      await platform.checkEnvAvailable(type: AliyunAuthType.verifyToken),
+      true,
+    );
   });
 
   test('preload completes without error', () async {
