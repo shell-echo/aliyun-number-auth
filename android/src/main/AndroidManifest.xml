@@ -1,4 +1,27 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="studio.echo.aliyun_number_auth">
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" android:maxSdkVersion="28" />
+
+    <application>
+        <activity
+            android:name="com.mobile.auth.gatewayauth.LoginAuthActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="behind"
+            android:theme="@style/authsdk_activity_dialog" />
+        <activity
+            android:name="com.mobile.auth.gatewayauth.PrivacyDialogActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="behind"
+            android:theme="@style/authsdk_activity_dialog" />
+        <activity
+            android:name="com.mobile.auth.gatewayauth.activity.AuthWebVeiwActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="behind" />
+    </application>
 </manifest>

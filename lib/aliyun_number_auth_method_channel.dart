@@ -170,12 +170,12 @@ class MethodChannelAliyunNumberAuth extends AliyunNumberAuthPlatform {
     Map<String, dynamic>? uiConfig,
   }) async {
     try {
-      final token = await methodChannel
-          .invokeMethod<String>('getMobileToken', {
-            'timeout': timeout.inMilliseconds,
-            'uiConfig': uiConfig,
-          })
-          .timeout(timeout + _safetyBuffer);
+      // The native timeout limits carrier token acquisition; it must not limit
+      // how long a user may spend reading or interacting with the auth page.
+      final token = await methodChannel.invokeMethod<String>('getMobileToken', {
+        'timeout': timeout.inMilliseconds,
+        'uiConfig': uiConfig,
+      });
       if (token == null || token.isEmpty) {
         throw const AliyunNumberAuthException(
           'NO_TOKEN',
@@ -183,18 +183,6 @@ class MethodChannelAliyunNumberAuth extends AliyunNumberAuthPlatform {
         );
       }
       return token;
-    } on TimeoutException {
-      // Try to dismiss the still-showing auth page so the user isn't stuck.
-      // Fire-and-forget — we're about to throw regardless.
-      unawaited(
-        methodChannel
-            .invokeMethod<void>('dismissLoginPage', {'animated': true})
-            .catchError((_) {}),
-      );
-      throw const AliyunNumberAuthException(
-        AliyunAuthCode.timeout,
-        'native did not respond within timeout',
-      );
     } on PlatformException catch (e) {
       throw _wrap(e);
     }

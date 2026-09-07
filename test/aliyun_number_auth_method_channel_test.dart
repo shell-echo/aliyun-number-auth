@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aliyun_number_auth/aliyun_number_auth_method_channel.dart';
@@ -63,5 +65,20 @@ void main() {
 
   test('getMobileToken', () async {
     expect(await platform.getMobileToken(), 'test_mobile_token');
+  });
+
+  test('getMobileToken does not time out while the auth page waits', () async {
+    final completer = Completer<String>();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+          if (methodCall.method == 'getMobileToken') return completer.future;
+          return null;
+        });
+
+    final result = platform.getMobileToken(timeout: Duration.zero);
+    await Future<void>.delayed(const Duration(milliseconds: 2100));
+    completer.complete('token_after_user_wait');
+
+    expect(await result, 'token_after_user_wait');
   });
 }

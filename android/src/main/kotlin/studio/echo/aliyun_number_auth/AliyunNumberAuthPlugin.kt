@@ -21,12 +21,9 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
-import android.view.View
-import android.widget.FrameLayout
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-import com.mobile.auth.gatewayauth.AuthRegisterViewConfig
 import com.mobile.auth.gatewayauth.AuthUIConfig
 import com.mobile.auth.gatewayauth.AuthUIControlClickListener
 import com.mobile.auth.gatewayauth.PhoneNumberAuthHelper
@@ -66,7 +63,7 @@ class AliyunNumberAuthPlugin :
     @Volatile private var pendingResult: Result? = null        // for getVerifyToken
     @Volatile private var pendingLoginResult: Result? = null   // for getMobileToken
     private var isInitialized = false
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
     private val tokenListener = object : TokenResultListener {
         override fun onTokenSuccess(ret: String) {
@@ -88,11 +85,10 @@ class AliyunNumberAuthPlugin :
             mainHandler.post {
                 when {
                     checkSnap != null && pendingCheckResult === checkSnap -> {
-                        // Only treat CODE_SUCCESS as "env available". Other intermediate
-                        // codes the SDK may surface through onTokenSuccess (rare, but
-                        // defensive) are reported as unavailable rather than a false-positive.
+                        // checkEnvAvailable has its own success code (600024). The token
+                        // success code (600000) belongs to getMobileToken/getVerifyToken.
                         val tokenRet = runCatching { TokenRet.fromJson(ret) }.getOrNull()
-                        val available = tokenRet?.code == ResultCode.CODE_SUCCESS
+                        val available = isEnvironmentAvailable(tokenRet?.code)
                         pendingCheckResult = null
                         checkSnap.success(available)
                     }
@@ -410,7 +406,7 @@ class AliyunNumberAuthPlugin :
 
     private fun buildAndSetAuthUIConfig(config: Map<String, Any>) {
         val density = context.resources.displayMetrics.density
-        // cornerRadius (dialog) is iOS-only — the Android SDK has no API for main-dialog corner radius.
+        val dialogCornerRadius = (config["cornerRadius"] as? Double ?: 16.0).toFloat() * density
         val btnCornerRadius = (config["loginBtnCornerRadius"] as? Double ?: 24.0).toFloat() * density
 
         val builder = AuthUIConfig.Builder()
@@ -418,33 +414,54 @@ class AliyunNumberAuthPlugin :
         // ── Presentation ───────────────────────────────────────────────────────
         val dialogMode = config["dialogMode"] as? Boolean ?: true
         if (dialogMode) {
-            val dialogHeightDp = (config["dialogHeight"] as? Double ?: 300.0).roundToInt()
-            builder.setDialogBottom(true)
-            builder.setDialogHeight(dialogHeightDp)
-            builder.setTapAuthPageMaskClosePage(config["tapBackgroundToClose"] as? Boolean ?: true)
-            // maskColor / maskAlpha: no equivalent API in the Android SDK for dialog mode.
+            applyAndroidDialogLayout(builder, config)
+            val dragHandle = androidDialogDragHandle(config, density)
+            var hasDialogBackground = false
+            // maskColor has no equivalent API in the Android SDK for dialog mode.
             // backgroundColor/backgroundImageData: apply as the content-area drawable
             // (same API used in full-screen). Image wins when both are set.
             config["backgroundColor"]?.let { color ->
                 runCatching {
                     builder.setPageBackgroundDrawable(
-                        ColorDrawable(toAndroidColor(color))
+                        buildDialogColorDrawable(
+                            toAndroidColor(color),
+                            dialogCornerRadius,
+                            dragHandle,
+                        )
                     )
+                    hasDialogBackground = true
                 }
             }
             (config["backgroundImageData"] as? ByteArray)?.let { bytes ->
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bmp ->
                     builder.setPageBackgroundDrawable(
-                        buildBackgroundDrawable(bmp, config["backgroundImageContentMode"] as? String)
+                        buildBackgroundDrawable(
+                            bmp,
+                            config["backgroundImageContentMode"] as? String,
+                            dialogCornerRadius,
+                            dragHandle,
+                        )
                     )
+                    hasDialogBackground = true
                 }
             }
-            registerDragHandleView(config, density)
+            // A handle registered through addAuthRegistViewConfig is animated as a
+            // separate overlay and can appear as a white bar sliding ahead of the
+            // sheet. Draw it into the page background so both move as one surface.
+            if (!hasDialogBackground && dragHandle != null) {
+                builder.setPageBackgroundDrawable(
+                    buildDialogColorDrawable(Color.WHITE, dialogCornerRadius, dragHandle)
+                )
+            }
         }
         // presentDirection / alertBarVisible / alertAvoidsKeyboard: iOS-only SDK features.
 
         // ── Status bar ────────────────────────────────────────────────────────
         builder.setStatusBarHidden(config["statusBarHidden"] as? Boolean ?: false)
+        // LoginAuthActivity enters from the bottom in dialog mode. Its default
+        // white status bar otherwise travels through the screen as a full-width
+        // flash during that transition.
+        if (dialogMode) builder.setStatusBarColor(Color.TRANSPARENT)
         // setLightColor(true) = dark icons = matches statusBarDarkText=true
         builder.setLightColor(config["statusBarDarkText"] as? Boolean ?: true)
 
@@ -583,8 +600,9 @@ class AliyunNumberAuthPlugin :
                 }
             }
         }
-        // alertBarVisible / alertAvoidsKeyboard / presentDirection:
-        // numberOffsetY / loginBtnOffsetY / loginBtnHeight / privacyAreaHeight: iOS-only SDK features.
+        // alertBarVisible / alertAvoidsKeyboard / presentDirection are iOS-only.
+        // Android has no protocol-container-height API, so privacyAreaHeight remains iOS-only;
+        // privacyBottomOffset and privacyHorizontalPadding still place the Android protocol view.
 
         // ── Advanced behavior ─────────────────────────────────────────────────
         // suspendDisMissVC and setUIClickListener are handled in registerUIClickListener()
@@ -632,6 +650,10 @@ class AliyunNumberAuthPlugin :
                         } catch (_: Exception) { /* ignore parse errors */ }
                     }
                 }
+                ResultCode.CODE_ERROR_USER_CANCEL,
+                ResultCode.CODE_ERROR_USER_SWITCH -> {
+                    finishUserExit(code, userExitMessage(code)!!)
+                }
                 ResultCode.CODE_ERROR_USER_CONTROL_CANCEL_BYBTN,
                 ResultCode.CODE_ERROR_USER_CONTROL_CANCEL_BYKEY -> {
                     if (suspendDisMissVC) {
@@ -644,62 +666,122 @@ class AliyunNumberAuthPlugin :
         })
     }
 
-    // ── Image / Drawable helpers ───────────────────────────────────────────────
-
-    private fun registerDragHandleView(config: Map<String, Any>, density: Float) {
-        if (config["dragHandleVisible"] as? Boolean != true) return
-        val widthPx = ((config["dragHandleWidth"] as? Double ?: 36.0) * density)
-            .roundToInt()
-            .coerceAtLeast(1)
-        val heightPx = ((config["dragHandleHeight"] as? Double ?: 4.0) * density)
-            .roundToInt()
-            .coerceAtLeast(1)
-        val topMarginPx = ((config["dragHandleTopOffset"] as? Double ?: 8.0) * density)
-            .roundToInt()
-            .coerceAtLeast(0)
-        val color = config["dragHandleColor"]?.let { toAndroidColor(it) }
-            ?: Color.parseColor("#D8D8D8")
-        val radius = heightPx / 2f
-        val handle = View(context).apply {
-            background = GradientDrawable().apply {
-                setColor(color)
-                cornerRadius = radius
-            }
-            layoutParams = FrameLayout.LayoutParams(widthPx, heightPx).apply {
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                topMargin = topMarginPx
-            }
-        }
-        runCatching {
-            helper.addAuthRegistViewConfig(
-                "aliyun_number_auth_drag_handle",
-                AuthRegisterViewConfig.Builder()
-                    .setView(handle)
-                    .setRootViewId(AuthRegisterViewConfig.RootViewId.ROOT_VIEW_ID_BODY)
-                    .build()
-            )
+    private fun finishUserExit(code: String, message: String) {
+        mainHandler.post {
+            val result = pendingLoginResult
+            if (result == null) return@post
+            pendingLoginResult = null
+            // Mask/back dismissal can finish LoginAuthActivity without resetting the
+            // helper's internal auth-page flag. Explicitly quit so a later login opens
+            // a fresh page instead of failing with "授权页已存在，不能再次拉起".
+            runCatching { helper.quitLoginPage() }
+            result.error(code, message, null)
         }
     }
 
-    private fun buildBackgroundDrawable(bitmap: Bitmap, contentMode: String?): Drawable {
-        return BackgroundBitmapDrawable(bitmap, contentMode ?: "cover")
+    // ── Image / Drawable helpers ───────────────────────────────────────────────
+
+    private fun buildDialogColorDrawable(
+        color: Int,
+        cornerRadius: Float,
+        dragHandle: AndroidDialogDragHandle?,
+    ): Drawable = DialogColorDrawable(color, cornerRadius, dragHandle)
+
+    private class DialogColorDrawable(
+        color: Int,
+        private val topCornerRadius: Float,
+        private val dragHandle: AndroidDialogDragHandle?,
+    ) : Drawable() {
+        private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color
+        }
+        private val handlePaint = dragHandle?.let { handle ->
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = handle.color }
+        }
+
+        override fun draw(canvas: Canvas) {
+            val b = bounds
+            if (b.isEmpty) return
+            val backgroundPath = Path().apply {
+                addRoundRect(
+                    RectF(b),
+                    topCornerRadii(topCornerRadius),
+                    Path.Direction.CW,
+                )
+            }
+            canvas.drawPath(backgroundPath, backgroundPaint)
+            if (dragHandle != null && handlePaint != null) {
+                drawDialogDragHandle(canvas, b, dragHandle, handlePaint)
+            }
+        }
+
+        override fun setAlpha(alpha: Int) {
+            backgroundPaint.alpha = alpha
+            handlePaint?.alpha = alpha
+            invalidateSelf()
+        }
+
+        override fun setColorFilter(colorFilter: ColorFilter?) {
+            backgroundPaint.colorFilter = colorFilter
+            handlePaint?.colorFilter = colorFilter
+            invalidateSelf()
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+    }
+
+    private fun buildBackgroundDrawable(
+        bitmap: Bitmap,
+        contentMode: String?,
+        topCornerRadius: Float = 0f,
+        dragHandle: AndroidDialogDragHandle? = null,
+    ): Drawable {
+        return BackgroundBitmapDrawable(
+            bitmap,
+            contentMode ?: "cover",
+            topCornerRadius,
+            dragHandle,
+        )
     }
 
     private class BackgroundBitmapDrawable(
         private val bitmap: Bitmap,
         private val contentMode: String,
+        private val topCornerRadius: Float,
+        private val dragHandle: AndroidDialogDragHandle?,
     ) : Drawable() {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         private val tilePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
             shader = BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+        }
+        private val handlePaint = dragHandle?.let { handle ->
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = handle.color }
         }
         private val dst = RectF()
 
         override fun draw(canvas: Canvas) {
             val b = bounds
             if (b.isEmpty || bitmap.width <= 0 || bitmap.height <= 0) return
+            val saveCount = canvas.save()
+            if (topCornerRadius > 0f) {
+                val clipPath = Path().apply {
+                    addRoundRect(
+                        RectF(b),
+                        topCornerRadii(topCornerRadius),
+                        Path.Direction.CW,
+                    )
+                }
+                canvas.clipPath(clipPath)
+            } else {
+                canvas.clipRect(b)
+            }
             if (contentMode == "tile") {
                 canvas.drawRect(b, tilePaint)
+                if (dragHandle != null && handlePaint != null) {
+                    drawDialogDragHandle(canvas, b, dragHandle, handlePaint)
+                }
+                canvas.restoreToCount(saveCount)
                 return
             }
             val viewW = b.width().toFloat()
@@ -723,9 +805,10 @@ class AliyunNumberAuthPlugin :
                     setScaledRect(b, bmpW * scale, bmpH * scale)
                 }
             }
-            val saveCount = canvas.save()
-            canvas.clipRect(b)
             canvas.drawBitmap(bitmap, null, dst, paint)
+            if (dragHandle != null && handlePaint != null) {
+                drawDialogDragHandle(canvas, b, dragHandle, handlePaint)
+            }
             canvas.restoreToCount(saveCount)
         }
 
@@ -738,12 +821,14 @@ class AliyunNumberAuthPlugin :
         override fun setAlpha(alpha: Int) {
             paint.alpha = alpha
             tilePaint.alpha = alpha
+            handlePaint?.alpha = alpha
             invalidateSelf()
         }
 
         override fun setColorFilter(colorFilter: ColorFilter?) {
             paint.colorFilter = colorFilter
             tilePaint.colorFilter = colorFilter
+            handlePaint?.colorFilter = colorFilter
             invalidateSelf()
         }
 
@@ -831,6 +916,31 @@ class AliyunNumberAuthPlugin :
     }
 
     companion object {
+        private fun drawDialogDragHandle(
+            canvas: Canvas,
+            bounds: Rect,
+            dragHandle: AndroidDialogDragHandle,
+            paint: Paint,
+        ) {
+            val left = bounds.exactCenterX() - dragHandle.widthPx / 2f
+            val top = bounds.top + dragHandle.topOffsetPx.toFloat()
+            val rect = RectF(
+                left,
+                top,
+                left + dragHandle.widthPx,
+                top + dragHandle.heightPx,
+            )
+            val radius = dragHandle.heightPx / 2f
+            canvas.drawRoundRect(rect, radius, radius, paint)
+        }
+
+        private fun topCornerRadii(radius: Float) = floatArrayOf(
+            radius, radius,
+            radius, radius,
+            0f, 0f,
+            0f, 0f,
+        )
+
         private const val CODE_INVALID_ARGS = "INVALID_ARGS"
         private const val CODE_NOT_INIT = "NOT_INITIALIZED"
         private const val CODE_BUSY = "BUSY"
@@ -839,3 +949,77 @@ class AliyunNumberAuthPlugin :
         private const val CODE_NO_ACTIVITY = "NO_ACTIVITY"
     }
 }
+
+internal fun isEnvironmentAvailable(code: String?): Boolean =
+    code == ResultCode.CODE_ERROR_ENV_CHECK_SUCCESS
+
+internal fun userExitMessage(code: String): String? = when (code) {
+    ResultCode.CODE_ERROR_USER_CANCEL -> ResultCode.MSG_ERROR_USER_CANCEL
+    ResultCode.CODE_ERROR_USER_SWITCH -> ResultCode.MSG_ERROR_USER_SWITCH
+    else -> null
+}
+
+internal data class AndroidDialogDragHandle(
+    val color: Int,
+    val widthPx: Int,
+    val heightPx: Int,
+    val topOffsetPx: Int,
+)
+
+internal fun androidDialogDragHandle(
+    config: Map<String, Any>,
+    density: Float,
+): AndroidDialogDragHandle? {
+    if (config["dragHandleVisible"] as? Boolean != true) return null
+    return AndroidDialogDragHandle(
+        color = (config["dragHandleColor"] as? Number)?.toLong()?.toInt() ?: -2565928,
+        widthPx = (((config["dragHandleWidth"] as? Number)?.toDouble() ?: 36.0) * density)
+            .roundToInt()
+            .coerceAtLeast(1),
+        heightPx = (((config["dragHandleHeight"] as? Number)?.toDouble() ?: 4.0) * density)
+            .roundToInt()
+            .coerceAtLeast(1),
+        topOffsetPx = (((config["dragHandleTopOffset"] as? Number)?.toDouble() ?: 8.0) * density)
+            .roundToInt()
+            .coerceAtLeast(0),
+    )
+}
+
+internal fun applyAndroidDialogLayout(
+    builder: AuthUIConfig.Builder,
+    config: Map<String, Any>,
+) {
+    val layout = androidDialogLayout(config)
+    builder.setDialogBottom(true)
+    builder.setDialogHeight(layout.dialogHeight)
+    builder.setTapAuthPageMaskClosePage(layout.tapBackgroundToClose)
+    layout.maskAlpha?.let { builder.setDialogAlpha(it) }
+    layout.numberOffsetY?.let { builder.setNumFieldOffsetY(it) }
+    layout.loginBtnOffsetY?.let { builder.setLogBtnOffsetY(it) }
+    layout.loginBtnHeight?.let { builder.setLogBtnHeight(it) }
+    builder.setLogBtnMarginLeftAndRight(layout.horizontalPadding)
+    builder.setPrivacyMargin(layout.horizontalPadding)
+    layout.privacyBottomOffset?.let { builder.setPrivacyOffsetY_B(it) }
+}
+
+internal data class AndroidDialogLayout(
+    val dialogHeight: Int,
+    val tapBackgroundToClose: Boolean,
+    val maskAlpha: Float?,
+    val numberOffsetY: Int?,
+    val loginBtnOffsetY: Int?,
+    val loginBtnHeight: Int?,
+    val horizontalPadding: Int,
+    val privacyBottomOffset: Int?,
+)
+
+internal fun androidDialogLayout(config: Map<String, Any>) = AndroidDialogLayout(
+    dialogHeight = (config["dialogHeight"] as? Number ?: 300.0).toDouble().roundToInt(),
+    tapBackgroundToClose = config["tapBackgroundToClose"] as? Boolean ?: true,
+    maskAlpha = (config["maskAlpha"] as? Number)?.toFloat(),
+    numberOffsetY = (config["numberOffsetY"] as? Number)?.toDouble()?.roundToInt(),
+    loginBtnOffsetY = (config["loginBtnOffsetY"] as? Number)?.toDouble()?.roundToInt(),
+    loginBtnHeight = (config["loginBtnHeight"] as? Number)?.toDouble()?.roundToInt(),
+    horizontalPadding = (config["privacyHorizontalPadding"] as? Number ?: 28.0).toDouble().roundToInt(),
+    privacyBottomOffset = (config["privacyBottomOffset"] as? Number)?.toDouble()?.roundToInt(),
+)

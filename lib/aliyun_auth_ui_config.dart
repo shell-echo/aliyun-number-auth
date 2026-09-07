@@ -394,18 +394,18 @@ class AliyunAuthUIConfig {
   /// Distance from the sheet top to the drag handle in logical pixels.
   final double dragHandleTopOffset;
 
-  // ── Advanced dialog layout (dialog mode only, iOS only) ───────────────────
+  // ── Advanced dialog layout (dialog mode only) ─────────────────────────────
 
   /// Y position of the phone-number label from the dialog top (default 28 pt).
-  /// **iOS only.** Only applies when [dialogMode] is `true`.
+  /// Only applies when [dialogMode] is `true`.
   final double? numberOffsetY;
 
   /// Y position of the login button from the dialog top (default 82 pt).
-  /// **iOS only.** Only applies when [dialogMode] is `true`.
+  /// Only applies when [dialogMode] is `true`.
   final double? loginBtnOffsetY;
 
   /// Height of the login button (default 50 pt).
-  /// **iOS only.** Only applies when [dialogMode] is `true`.
+  /// Only applies when [dialogMode] is `true`.
   final double? loginBtnHeight;
 
   /// Height of the privacy + checkbox area at the bottom (default 72 pt).
@@ -413,11 +413,12 @@ class AliyunAuthUIConfig {
   final double? privacyAreaHeight;
 
   /// Horizontal padding of the privacy + checkbox area from dialog edges.
-  /// **iOS only.** Only applies when [dialogMode] is `true`.
+  /// On Android this also controls the login button's horizontal margin.
+  /// Only applies when [dialogMode] is `true`.
   final double? privacyHorizontalPadding;
 
   /// Distance between the privacy + checkbox area and the dialog bottom.
-  /// **iOS only.** Only applies when [dialogMode] is `true`.
+  /// Only applies when [dialogMode] is `true`.
   final double? privacyBottomOffset;
 
   // ── Background image ──────────────────────────────────────────────────────

@@ -592,7 +592,7 @@ logoImageData: (await rootBundle.load('assets/logo.png')).buffer.asUint8List(),
 
 | 属性 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `dragHandleVisible` | `bool` | `false` | 显示 Sheet 顶部视觉拖拽手柄，不提供真实拖拽交互 |
+| `dragHandleVisible` | `bool` | `false` | 显示 Sheet 顶部视觉拖拽手柄，不提供真实拖拽交互；Android 会将其绘入背景以保持入场动画同步 |
 | `dragHandleColor` | `Color?` | `#D8D8D8` | 手柄颜色 |
 | `dragHandleWidth` | `double` | `36` | 手柄宽度 |
 | `dragHandleHeight` | `double` | `4` | 手柄高度 |
@@ -604,7 +604,7 @@ logoImageData: (await rootBundle.load('assets/logo.png')).buffer.asUint8List(),
 |---|---|---|---|
 | `suspendDisMissVC` | `bool` | `false` | `true` = 返回键不自动关闭授权页，改为触发 `onSuspendedDismiss`；需手动调 `dismissLoginPage()` |
 
-#### 高级布局（仅 `dialogMode=true`，iOS only）
+#### 高级布局（仅 `dialogMode=true`）
 
 当默认布局位置不满足设计需求时，可微调各元素 Y 坐标。
 
@@ -613,7 +613,7 @@ logoImageData: (await rootBundle.load('assets/logo.png')).buffer.asUint8List(),
 | `numberOffsetY` | `double?` | `28` | 脱敏号码距 sheet 顶部的 Y 坐标 |
 | `loginBtnOffsetY` | `double?` | `82` | 登录按钮距 sheet 顶部的 Y 坐标 |
 | `loginBtnHeight` | `double?` | `50` | 登录按钮高度 |
-| `privacyAreaHeight` | `double?` | `72` | 协议区域高度（贴近 sheet 底部） |
+| `privacyAreaHeight` | `double?` | `72` | 协议区域高度（贴近 sheet 底部），**iOS only**；Android 协议控件高度由 SDK 内容决定 |
 | `privacyHorizontalPadding` | `double?` | 同登录按钮左右边距 | 协议区域距 sheet 左右边缘的距离 |
 | `privacyBottomOffset` | `double?` | `16` | 协议区域距 sheet 底部的距离 |
 
@@ -825,11 +825,11 @@ AliyunAuthWidget(
 | ✅ | 错误码常量（`AliyunAuthCode`） | ✅ | ✅ |
 | ✅ | 弹出方向（`presentDirection`） | ✅ | — |
 | ✅ | 对话框标题栏（`alertBarVisible` / `alertTitle` 等） | ✅ | — |
-| ✅ | 对话框圆角（`cornerRadius`） | ✅ | — |
+| ✅ | 对话框圆角（`cornerRadius`） | ✅ | 部分（配置背景色或背景图时生效） |
 | ✅ | 自动隐藏 Loading（`autoHideLoginLoading`） | ✅ | — |
 | ✅ | Checkbox 垂直居中（`checkBoxVerticalCenter`） | ✅ | — |
 | ✅ | 对话框键盘避让（`alertAvoidsKeyboard`） | ✅ | — |
-| ✅ | 对话框元素布局偏移（`numberOffsetY` 等） | ✅ | — |
+| ✅ | 对话框元素布局偏移（`numberOffsetY` 等） | ✅ | 部分（不含 `privacyAreaHeight`） |
 | 🚧 | 二次隐私确认弹窗完整配置（`privacyAlertIsNeedShow` 等属性） | 🚧 | 🚧 |
 | 🚧 | 授权页自定义 View 注入（需原生桥接） | 🚧 | 🚧 |
 | 🚧 | 自定义进场/退场动画（需原生桥接） | 🚧 | 🚧 |
