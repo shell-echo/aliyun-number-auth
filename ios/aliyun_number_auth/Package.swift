@@ -19,23 +19,12 @@ let package = Package(
             name: "aliyun_number_auth",
             dependencies: [
                 .product(name: "FlutterFramework", package: "FlutterFramework"),
-                "ATAuthSDK",
-                "YTXMonitor",
-                "YTXOperators",
+                "ATAuthSDK_D",
             ],
             resources: [
                 .process("PrivacyInfo.xcprivacy"),
-            ],
-            // ATAuthSDK uses Objective-C categories on UIViewController to present the
-            // login page. ObjC categories in static xcframeworks are not automatically
-            // linked by the linker — -ObjC forces them in. Without this flag,
-            // getLoginToken crashes with "unrecognized selector" at runtime.
-            linkerSettings: [
-                .unsafeFlags(["-ObjC"], .when(platforms: [.iOS]))
             ]
         ),
-        .binaryTarget(name: "ATAuthSDK",    path: "Frameworks/ATAuthSDK.xcframework"),
-        .binaryTarget(name: "YTXMonitor",   path: "Frameworks/YTXMonitor.xcframework"),
-        .binaryTarget(name: "YTXOperators", path: "Frameworks/YTXOperators.xcframework"),
+        .binaryTarget(name: "ATAuthSDK_D", path: "Frameworks/ATAuthSDK_D.xcframework"),
     ]
 )

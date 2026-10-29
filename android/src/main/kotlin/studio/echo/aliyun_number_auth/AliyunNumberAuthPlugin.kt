@@ -40,10 +40,14 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 
 /** AliyunNumberAuthPlugin */
-class AliyunNumberAuthPlugin :
+class AliyunNumberAuthPlugin internal constructor(
+    private val testMainDispatcher: ((() -> Unit) -> Unit)?,
+) :
     FlutterPlugin,
     MethodCallHandler,
     ActivityAware {
+
+    constructor() : this(null)
 
     private lateinit var channel: MethodChannel
     private lateinit var context: Context
@@ -51,38 +55,28 @@ class AliyunNumberAuthPlugin :
 
     private var privacyVCIsCustomized = false
     private var suspendDisMissVC = false
-    // @Volatile on the pending Result fields: writes happen on the main thread
-    // (onMethodCall / detach), but the SDK's TokenResultListener fires on a
-    // background thread and snapshots these fields before posting back to main.
-    // Without @Volatile the SDK thread could observe a stale reference on first
-    // read, which the snapshot+identity-check pattern in tokenListener would
-    // then silently drop. JVM atomicity of reference writes guarantees no torn
-    // values, and @Volatile ensures the SDK thread sees the latest write —
-    // making the snapshot pattern's correctness explicit rather than implicit.
-    @Volatile private var pendingCheckResult: Result? = null
-    @Volatile private var pendingResult: Result? = null        // for getVerifyToken
-    @Volatile private var pendingLoginResult: Result? = null   // for getMobileToken
+    // SDK listeners capture the originating Result before the call starts;
+    // completion is dispatched to main and checks that this Result is still live.
+    @Volatile internal var pendingCheckResult: Result? = null
+    @Volatile internal var pendingResult: Result? = null        // for getVerifyToken
+    @Volatile internal var pendingLoginResult: Result? = null   // for getMobileToken
     private var isInitialized = false
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
-    private val tokenListener = object : TokenResultListener {
+    private fun onMain(action: () -> Unit) {
+        val dispatcher = testMainDispatcher
+        if (dispatcher != null) dispatcher(action) else mainHandler.post(action)
+    }
+
+    // Bind before invoking the SDK. Taking snapshots only when an SDK callback
+    // arrives would bind an expired response to whichever request is current then.
+    internal fun createTokenListener(
+        checkSnap: Result? = null,
+        loginSnap: Result? = null,
+        tokenSnap: Result? = null,
+    ): TokenResultListener = object : TokenResultListener {
         override fun onTokenSuccess(ret: String) {
-            // Snapshot the in-flight Result references on the SDK thread BEFORE
-            // hopping to main. Without this, a detach → reattach → new request
-            // sequence that lands between the post and the runnable would let
-            // the late runnable resolve the *new* pendingLoginResult with the
-            // *old* response. Snapshotting binds the runnable to the originating
-            // call's Result so it can only ever resolve the right Future.
-            //
-            // Then on the main thread we re-check `pendingX === xSnap` before
-            // resolving — if something else already consumed the Result
-            // (detach, dismissLoginPage, watchdog), the snapshot reference is
-            // no longer the live pending, so we DROP the event rather than
-            // call `Result` twice (which throws IllegalStateException).
-            val checkSnap = pendingCheckResult
-            val loginSnap = pendingLoginResult
-            val tokenSnap = pendingResult
-            mainHandler.post {
+            onMain {
                 when {
                     checkSnap != null && pendingCheckResult === checkSnap -> {
                         // checkEnvAvailable has its own success code (600024). The token
@@ -138,10 +132,7 @@ class AliyunNumberAuthPlugin :
         }
 
         override fun onTokenFailed(ret: String) {
-            val checkSnap = pendingCheckResult
-            val loginSnap = pendingLoginResult
-            val tokenSnap = pendingResult
-            mainHandler.post {
+            onMain {
                 val tokenRet = runCatching { TokenRet.fromJson(ret) }.getOrNull()
                 val code = tokenRet?.code ?: CODE_FAILED
                 val msg = tokenRet?.msg ?: ret
@@ -164,7 +155,7 @@ class AliyunNumberAuthPlugin :
     }
 
     private val helper: PhoneNumberAuthHelper by lazy {
-        PhoneNumberAuthHelper.getInstance(context, tokenListener)
+        PhoneNumberAuthHelper.getInstance(context, createTokenListener())
     }
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
@@ -252,7 +243,14 @@ class AliyunNumberAuthPlugin :
                 }
                 pendingCheckResult = result
                 try {
+                    helper.setAuthListener(createTokenListener(checkSnap = result))
                     helper.checkEnvAvailable(serviceType)
+                    mainHandler.postDelayed({
+                        if (pendingCheckResult === result) {
+                            pendingCheckResult = null
+                            result.error("600015", "environment check did not respond within 15s", null)
+                        }
+                    }, 15_000)
                 } catch (e: Exception) {
                     pendingCheckResult?.error(CODE_FAILED, e.message, null)
                     pendingCheckResult = null
@@ -289,7 +287,14 @@ class AliyunNumberAuthPlugin :
                 val ms = call.argument<Int>("timeout") ?: 10000
                 pendingResult = result
                 try {
+                    helper.setAuthListener(createTokenListener(tokenSnap = result))
                     helper.getVerifyToken(ms)
+                    mainHandler.postDelayed({
+                        if (pendingResult === result) {
+                            pendingResult = null
+                            result.error("600015", "verification did not respond within timeout", null)
+                        }
+                    }, ms.toLong().coerceAtLeast(0) + 1_000)
                 } catch (e: Exception) {
                     pendingResult?.error(CODE_FAILED, e.message, null)
                     pendingResult = null
@@ -309,6 +314,7 @@ class AliyunNumberAuthPlugin :
                 suspendDisMissVC = uiConfig?.get("suspendDisMissVC") as? Boolean ?: false
                 pendingLoginResult = result
                 try {
+                    helper.setAuthListener(createTokenListener(loginSnap = result))
                     // Drop any view-overlay registrations from a previous call so
                     // they don't accumulate. We never call addAuthRegistViewConfig
                     // ourselves, but a host app that registers custom views via the
@@ -613,13 +619,15 @@ class AliyunNumberAuthPlugin :
     }
 
     private fun registerUIClickListener() {
+        val request = pendingLoginResult ?: return
         helper.setUIClickListener(AuthUIControlClickListener { code, _, jsonString ->
             when (code) {
                 ResultCode.CODE_ERROR_USER_LOGIN_BTN -> {
                     try {
                         val obj = org.json.JSONObject(jsonString ?: "{}")
                         val isChecked = obj.optBoolean("isChecked", false)
-                        mainHandler.post {
+                        onMain {
+                            if (pendingLoginResult !== request) return@onMain
                             channel.invokeMethod("onLoginButtonTap",
                                 mapOf("isChecked" to isChecked))
                         }
@@ -631,7 +639,8 @@ class AliyunNumberAuthPlugin :
                     try {
                         val obj = org.json.JSONObject(jsonString ?: "{}")
                         val isChecked = obj.optBoolean("isChecked", false)
-                        mainHandler.post {
+                        onMain {
+                            if (pendingLoginResult !== request) return@onMain
                             channel.invokeMethod("onCheckboxToggle",
                                 mapOf("isChecked" to isChecked))
                         }
@@ -643,7 +652,8 @@ class AliyunNumberAuthPlugin :
                             val obj  = org.json.JSONObject(jsonString ?: "{}")
                             val url  = obj.optString("url")
                             val name = obj.optString("name")
-                            mainHandler.post {
+                            onMain {
+                                if (pendingLoginResult !== request) return@onMain
                                 channel.invokeMethod("onPrivacyLinkTap",
                                     mapOf("url" to url, "name" to name))
                             }
@@ -652,12 +662,13 @@ class AliyunNumberAuthPlugin :
                 }
                 ResultCode.CODE_ERROR_USER_CANCEL,
                 ResultCode.CODE_ERROR_USER_SWITCH -> {
-                    finishUserExit(code, userExitMessage(code)!!)
+                    finishUserExit(request, code, userExitMessage(code)!!)
                 }
                 ResultCode.CODE_ERROR_USER_CONTROL_CANCEL_BYBTN,
                 ResultCode.CODE_ERROR_USER_CONTROL_CANCEL_BYKEY -> {
                     if (suspendDisMissVC) {
-                        mainHandler.post {
+                        onMain {
+                            if (pendingLoginResult !== request) return@onMain
                             channel.invokeMethod("onSuspendedDismiss", null)
                         }
                     }
@@ -666,10 +677,9 @@ class AliyunNumberAuthPlugin :
         })
     }
 
-    private fun finishUserExit(code: String, message: String) {
-        mainHandler.post {
-            val result = pendingLoginResult
-            if (result == null) return@post
+    private fun finishUserExit(result: Result, code: String, message: String) {
+        onMain {
+            if (pendingLoginResult !== result) return@onMain
             pendingLoginResult = null
             // Mask/back dismissal can finish LoginAuthActivity without resetting the
             // helper's internal auth-page flag. Explicitly quit so a later login opens

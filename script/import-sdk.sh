@@ -4,9 +4,6 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 ROOT="$DIR/.."
 SDK_DIR="$ROOT/sdk"
-ANDROID_TMP="$SDK_DIR/android_tmp"
-IOS_TMP="$SDK_DIR/ios_tmp"
-trap 'rm -rf "$ANDROID_TMP" "$IOS_TMP"' EXIT
 
 # check sdk/ directory
 if [[ ! -d "$SDK_DIR" ]]; then
@@ -14,9 +11,62 @@ if [[ ! -d "$SDK_DIR" ]]; then
   exit 1
 fi
 
+# Only this invocation owns the lock and its fresh temporary directory. Never
+# remove sdk/android_tmp or sdk/ios_tmp: they may contain somebody else's work.
+LOCK_DIR="$SDK_DIR/.import-sdk.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  echo "error: SDK import is locked ($LOCK_DIR). Check for an active or interrupted import." >&2
+  exit 1
+fi
+WORK_DIR=""
+COMMITTED=false
+TARGETS=("$ROOT/android/libs-maven/com/aliyun/atauth" "$ROOT/android/build.gradle.kts" "$ROOT/ios/aliyun_number_auth/Frameworks")
+STARTED=()
+HAD_ORIGINAL=()
+
+cleanup() {
+  local status=$? rollback_failed=false i target
+  trap - EXIT HUP INT TERM
+  if [[ "$COMMITTED" != true && -n "$WORK_DIR" ]]; then
+    for ((i=${#STARTED[@]}-1; i>=0; i--)); do
+      target="${TARGETS[$i]}"
+      if [[ -e "$WORK_DIR/backup-$i" ]]; then
+        rm -rf "$target"
+        if ! mv "$WORK_DIR/backup-$i" "$target"; then rollback_failed=true; fi
+      elif [[ "${HAD_ORIGINAL[$i]}" == false ]]; then
+        rm -rf "$target"
+      fi
+    done
+  fi
+  if [[ "$rollback_failed" == true ]]; then
+    echo "error: rollback failed; backups and lock retained in $WORK_DIR" >&2
+    exit 1
+  fi
+  if [[ -n "$WORK_DIR" ]]; then rm -rf "$WORK_DIR"; fi
+  rmdir "$LOCK_DIR"
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+WORK_DIR=$(mktemp -d "$SDK_DIR/.import-sdk.XXXXXX")
+ANDROID_TMP="$WORK_DIR/android"
+IOS_TMP="$WORK_DIR/ios"
+STAGED="$WORK_DIR/staged"
+mkdir -p "$STAGED/atauth" "$STAGED/Frameworks"
+
+for target in "${TARGETS[@]}"; do
+  if [[ -L "$target" ]]; then
+    echo "error: refusing to replace symlink: $target" >&2
+    exit 1
+  fi
+done
+cp "$ROOT/android/build.gradle.kts" "$STAGED/build.gradle.kts"
+
 # find zip files
 ANDROID_ZIP=$(ls "$SDK_DIR"/numberAuthSDK_APP_Android_v*.zip 2>/dev/null | sort -V | tail -1 || true)
-IOS_ZIP=$(ls "$SDK_DIR"/numberAuthSDK_APP_iOS_v*_static.zip 2>/dev/null | sort -V | tail -1 || true)
+IOS_ZIP=$(ls "$SDK_DIR"/numberAuthSDK_APP_iOS_v*_dynamic.zip 2>/dev/null | sort -V | tail -1 || true)
 
 if [[ -z "$ANDROID_ZIP" ]]; then
   echo "error: Android SDK zip not found in sdk/ (expected: numberAuthSDK_APP_Android_v*.zip)" >&2
@@ -24,7 +74,7 @@ if [[ -z "$ANDROID_ZIP" ]]; then
 fi
 
 if [[ -z "$IOS_ZIP" ]]; then
-  echo "error: iOS SDK zip not found in sdk/ (expected: numberAuthSDK_APP_iOS_v*_static.zip)" >&2
+  echo "error: iOS SDK zip not found in sdk/ (expected: numberAuthSDK_APP_iOS_v*_dynamic.zip with vendor dSYM)" >&2
   exit 1
 fi
 
@@ -116,8 +166,7 @@ echo "✓ Android SDK validated"
 # We parse out artifact + a semver-shaped version and lay them out as:
 #   libs-maven/com/aliyun/atauth/<artifact>/<version>/<artifact>-<version>.aar
 #   libs-maven/com/aliyun/atauth/<artifact>/<version>/<artifact>-<version>.pom
-MAVEN_GROUP_DIR="$ROOT/android/libs-maven/com/aliyun/atauth"
-rm -rf "$MAVEN_GROUP_DIR"
+MAVEN_GROUP_DIR="$STAGED/atauth"
 for src_aar in "$ANDROID_SDK_DIR"/*.aar; do
   filename=$(basename "$src_aar")
   # Match: <artifact>-<version> where version is N.N[.N] possibly followed by
@@ -129,6 +178,23 @@ for src_aar in "$ANDROID_SDK_DIR"/*.aar; do
     echo "error: could not parse artifact/version from $filename" >&2
     exit 1
   fi
+  case "$artifact" in
+    auth_number_product|main|logger) ;;
+    *) echo "error: unreviewed Android SDK dependency: $artifact" >&2; exit 1 ;;
+  esac
+  if [[ -d "$MAVEN_GROUP_DIR/$artifact" ]]; then
+    echo "error: multiple AARs for $artifact" >&2
+    exit 1
+  fi
+  # Keep the host's dependency coordinates in sync with the newly staged AARs.
+  coordinate="com.aliyun.atauth:$artifact:"
+  if [[ $(grep -c "implementation(\"$coordinate" "$STAGED/build.gradle.kts" || true) != 1 ]]; then
+    echo "error: expected one Gradle dependency for $artifact" >&2
+    exit 1
+  fi
+  sed -E "s|(implementation\(\"com\\.aliyun\\.atauth:$artifact:)[^\"@]+(@aar\"\))|\\1$version\\2|" \
+    "$STAGED/build.gradle.kts" > "$STAGED/build.gradle.next"
+  mv "$STAGED/build.gradle.next" "$STAGED/build.gradle.kts"
   target_dir="$MAVEN_GROUP_DIR/$artifact/$version"
   mkdir -p "$target_dir"
   cp "$src_aar" "$target_dir/$artifact-$version.aar"
@@ -144,7 +210,13 @@ for src_aar in "$ANDROID_SDK_DIR"/*.aar; do
 EOF
   echo "  ✓ $artifact:$version"
 done
-echo "✓ Android AARs imported to android/libs-maven/"
+for artifact in auth_number_product main logger; do
+  if [[ ! -d "$MAVEN_GROUP_DIR/$artifact" ]]; then
+    echo "error: required Android SDK dependency missing: $artifact" >&2
+    exit 1
+  fi
+done
+echo "✓ Android AARs staged"
 
 # iOS
 unzip -q "$IOS_ZIP" -d "$IOS_TMP"
@@ -191,15 +263,28 @@ check_ios_method "getVersion"
 
 echo "✓ iOS SDK validated"
 
-# Replace xcframeworks atomically — `cp -r foo.xcframework existing-dir/`
-# on macOS MERGES into an existing same-named dir rather than replacing it,
-# leaving stale resources behind when an SDK upgrade removes assets (e.g. a
-# renamed icon would ship both old and new in the app bundle). Nuke all
-# *.xcframework entries first, then copy the new set in fresh — also
-# handles the rare case of the SDK dropping a vendored framework entirely.
-mkdir -p "$ROOT/ios/aliyun_number_auth/Frameworks"
-rm -rf "$ROOT/ios/aliyun_number_auth/Frameworks"/*.xcframework
-cp -r "$IOS_XCFW_DIR"/*.xcframework "$ROOT/ios/aliyun_number_auth/Frameworks/"
-echo "✓ iOS xcframeworks imported to ios/aliyun_number_auth/Frameworks/"
+# SPM supports dynamic binary targets. Include the original, UUID-matched dSYM
+# through DebugSymbolsPath so Xcode collects it while archiving the device app.
+python3 "$DIR/package_ios_sdk.py" \
+  "$IOS_XCFW_DIR/ATAuthSDK_D.xcframework" \
+  "$(dirname "$IOS_XCFW_DIR")/frameworks/ATAuthSDK_D.framework.dSYM" \
+  "$STAGED/Frameworks/ATAuthSDK_D.xcframework"
+
+# All validation and copying finish before any installed SDK is changed.
+# Each rename is atomic on the repository's filesystem; failures/signals during
+# the multi-path update restore the previous set. SIGKILL/power loss requires
+# manual recovery from the retained .import-sdk.* directory and lock.
+STAGED_TARGETS=("$STAGED/atauth" "$STAGED/build.gradle.kts" "$STAGED/Frameworks")
+for i in 0 1 2; do
+  target="${TARGETS[$i]}"
+  mkdir -p "$(dirname "$target")"
+  HAD_ORIGINAL[$i]=false
+  if [[ -e "$target" ]]; then HAD_ORIGINAL[$i]=true; fi
+  STARTED[$i]=true
+  if [[ "${HAD_ORIGINAL[$i]}" == true ]]; then mv "$target" "$WORK_DIR/backup-$i"; fi
+  mv "${STAGED_TARGETS[$i]}" "$target"
+done
+COMMITTED=true
+echo "✓ Android AARs, Gradle versions and iOS xcframeworks imported"
 
 echo "done"

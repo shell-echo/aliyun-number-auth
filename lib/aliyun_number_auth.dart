@@ -31,12 +31,9 @@ class AliyunNumberAuth {
   // Guards concurrent getMobileToken calls so a racing second call cannot
   // overwrite (and then prematurely clear) the first call's callbacks.
   //
-  // **Scope:** static — shared across all Flutter engines / isolates in the
-  // process. In single-engine apps (the common case) this is exactly the
-  // desired behavior. In multi-engine setups the underlying native SDK is also
-  // a process-wide singleton, so the cross-engine guarding actually matches
-  // native reality — two engines cannot meaningfully show the auth page
-  // concurrently anyway.
+  // Scope: this Dart isolate. Dart statics do not coordinate separate engines
+  // or isolates. The native SDK is process-wide; applications must route auth
+  // through one engine instead of concurrently using it from multiple engines.
   static bool _mobileTokenInFlight = false;
   // ── Core lifecycle ────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-import ATAuthSDK
+import ATAuthSDK_D
 import Flutter
 import UIKit
 
@@ -14,12 +14,34 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
     registrar.addMethodCallDelegate(instance, channel: ch)
   }
 
-  private let auth = TXCommonHandler.sharedInstance()
+  private let auth: TXCommonHandler
+  private let scheduleTimeout: (TimeInterval, @escaping () -> Void) -> Void
+  private let viewControllerProvider: (() -> UIViewController?)?
+
+  public override convenience init() {
+    self.init(auth: TXCommonHandler.sharedInstance())
+  }
+
+  // Internal injection keeps native regression tests independent of carrier
+  // connectivity, real credentials, UI presentation and wall-clock delays.
+  init(auth: TXCommonHandler,
+       scheduleTimeout: @escaping (TimeInterval, @escaping () -> Void) -> Void = {
+         DispatchQueue.main.asyncAfter(deadline: .now() + $0, execute: $1)
+       },
+       viewControllerProvider: (() -> UIViewController?)? = nil) {
+    self.auth = auth
+    self.scheduleTimeout = scheduleTimeout
+    self.viewControllerProvider = viewControllerProvider
+    super.init()
+  }
   private var isInitialized = false
   /// Monotonic counter incremented each time an `init` is started — lets the
   /// timeout watchdog distinguish "my init" from "a later init that already
   /// landed". Overflow wraps harmlessly with `&+=`.
   private var initSeq: UInt64 = 0
+  private var checkSeq: UInt64 = 0
+  private var tokenSeq: UInt64 = 0
+  private var loginSeq: UInt64 = 0
 
   // Each pending result is stored so detachFromEngine can cancel them all.
   private var pendingInitResult: FlutterResult?
@@ -52,10 +74,7 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
         result(FlutterError(code: Self.codeInvalidArgs, message: "iosSk is required", details: nil))
         return
       }
-      if pendingInitResult != nil {
-        result(FlutterError(code: Self.codeBusy, message: "init already in progress", details: nil))
-        return
-      }
+      guard requireIdle(result: result) else { return }
       pendingInitResult = result
       // Stamp the in-flight token so the timeout watchdog (below) can tell
       // whether it raced a real callback that already cleared pendingInitResult
@@ -78,7 +97,7 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
       }
       // Watchdog: 15s is generous — Aliyun's init normally finishes in <1s.
       // The check fires only if the same init is still outstanding.
-      DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+      scheduleTimeout(15) { [weak self] in
         guard let self, self.initSeq == mySeq, let pending = self.pendingInitResult else { return }
         self.pendingInitResult = nil
         pending(FlutterError(code: Self.codeTimeout, message: "init did not respond within 15s", details: nil))
@@ -90,13 +109,20 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
       let typeStr = args?["type"] as? String ?? "loginToken"
       let authType: PNSAuthType = typeStr == "verifyToken" ? .verifyToken : .loginToken
       pendingCheckResult = result
+      checkSeq &+= 1
+      let mySeq = checkSeq
       auth.checkEnvAvailable(with: authType) { [weak self] dict in
         DispatchQueue.main.async {
-          guard let self, let pending = self.pendingCheckResult else { return }
+          guard let self, self.checkSeq == mySeq, let pending = self.pendingCheckResult else { return }
           self.pendingCheckResult = nil
           let code = dict?["resultCode"] as? String ?? Self.codeFailed
           pending(code == Self.codeSuccess)
         }
+      }
+      scheduleTimeout(15) { [weak self] in
+        guard let self, self.checkSeq == mySeq, let pending = self.pendingCheckResult else { return }
+        self.pendingCheckResult = nil
+        pending(FlutterError(code: Self.codeTimeout, message: "environment check did not respond within 15s", details: nil))
       }
 
     // ── Preload ──────────────────────────────────────────────────────────────
@@ -117,9 +143,11 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
       guard requireInitialized(result: result), requireIdle(result: result) else { return }
       let ms = args?["timeout"] as? Int ?? 10000
       pendingTokenResult = result
+      tokenSeq &+= 1
+      let mySeq = tokenSeq
       auth.getVerifyToken(withTimeout: seconds(ms)) { [weak self] dict in
         DispatchQueue.main.async {
-          guard let self, let pending = self.pendingTokenResult else { return }
+          guard let self, self.tokenSeq == mySeq, let pending = self.pendingTokenResult else { return }
           self.pendingTokenResult = nil
           let code = dict["resultCode"] as? String ?? Self.codeFailed
           if code == Self.codeSuccess, let token = dict["token"] as? String, !token.isEmpty {
@@ -128,6 +156,12 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
             pending(FlutterError(code: code, message: dict["msg"] as? String, details: nil))
           }
         }
+      }
+      // Release native BUSY before Dart's timeout + 2s fallback expires.
+      scheduleTimeout(max(0, seconds(ms)) + 1) { [weak self] in
+        guard let self, self.tokenSeq == mySeq, let pending = self.pendingTokenResult else { return }
+        self.pendingTokenResult = nil
+        pending(FlutterError(code: Self.codeTimeout, message: "verification did not respond within timeout", details: nil))
       }
 
     // ── Mobile token (one-key login) ──────────────────────────────────────────
@@ -143,10 +177,12 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
       privacyVCIsCustomized = uiConfigMap?["privacyVCIsCustomized"] as? Bool ?? false
       let model = buildModel(from: uiConfigMap)
       pendingLoginResult = result
+      loginSeq &+= 1
+      let mySeq = loginSeq
 
       auth.getLoginToken(withTimeout: seconds(ms), controller: vc, model: model) { [weak self] dict in
         DispatchQueue.main.async {
-          guard let self, let pending = self.pendingLoginResult else { return }
+          guard let self, self.loginSeq == mySeq, let pending = self.pendingLoginResult else { return }
           let code = dict["resultCode"] as? String ?? Self.codeFailed
           switch code {
           case "700006",             // secondary privacy dialog shown
@@ -333,6 +369,7 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
   // MARK: - Top view controller
 
   private func topViewController() -> UIViewController? {
+    if let viewControllerProvider { return viewControllerProvider() }
     let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
     let scene = scenes.first { $0.activationState == .foregroundActive }
              ?? scenes.first { $0.activationState == .foregroundInactive }

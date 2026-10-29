@@ -95,7 +95,7 @@ dependencies {
     testImplementation("org.mockito:mockito-core:5.0.0")
     // Aliyun ATAuth SDK, resolved from the local Maven repo at libs-maven/.
     // See the allprojects { repositories { ... } } block above.
-    implementation("com.aliyun.atauth:auth_number_product:2.14.23@aar")
+    implementation("com.aliyun.atauth:auth_number_product:2.14.24@aar")
     implementation("com.aliyun.atauth:main:2.2.3@aar")
     implementation("com.aliyun.atauth:logger:2.2.2@aar")
     // The vendored AARs extend androidx.appcompat.app.AppCompatActivity

@@ -5,8 +5,8 @@
 > 🤖 本仓库在 [Claude Opus 4.7](https://www.anthropic.com/claude) 协助下完成开发与代码审查。
 
 SDK 版本
-- **Android** — v2.14.23
-- **iOS** — v2.14.18
+- **Android** — v2.14.24
+- **iOS** — v2.14.19（官方动态库，附带设备端 dSYM）
 
 ---
 
@@ -17,19 +17,86 @@ dependencies:
   aliyun_number_auth:
     git:
       url: https://github.com/shell-echo/aliyun-number-auth.git
+      ref: main
 ```
 
 ```bash
 flutter pub get
 ```
 
-> **iOS 必须开启 Swift Package Manager**（本插件仅通过 SPM 集成）：
->
-> ```bash
-> flutter config --enable-swift-package-manager
-> ```
->
-> 要求 Flutter ≥ 3.28（见 [pubspec.yaml](pubspec.yaml)；Dart `^3.7.0` 与 Flutter 3.28 起同步发布）。Package.swift 已声明 vendored xcframeworks 与 `-ObjC` 链接标志，无需手动到 Runner → Build Settings 配置 Other Linker Flags。
+生产项目建议将 `ref` 固定为审核过的完整提交 SHA，并提交宿主的 `pubspec.lock`。本地联调时可改用 `path: ../aliyun-number-auth`，两种来源择一。
+
+### 接入准备
+
+先按阿里云[客户端准备工作](https://help.aliyun.com/zh/pnvs/developer-reference/the-preparatory-work-2/)及[认证方案管理](https://help.aliyun.com/zh/pnvs/user-guide/number-certification-program-management/)开通服务、创建对应平台的号码认证方案。iOS 方案的 BundleID 要与实际 App 一致；Android 方案绑定实际 applicationId 和签名。`init` 接收各平台的 **SDK 方案密钥**，服务端的 AccessKey 不传给客户端。不同 Bundle ID 的开发/生产 App 应使用各自匹配的方案。
+
+客户端取得 token 后交给自有服务端完成认证或换取手机号；一键登录 token 与本机号码校验 token 分别走对应服务端接口。初始化失败、环境不支持或运营商取号失败时，宿主提供其他登录方式。
+
+### iOS / Xcode 配置
+
+本插件使用 **Swift Package Manager（SPM）**，Flutter/Dart 最低版本以 [pubspec.yaml](pubspec.yaml) 为准；本次验证环境为 Flutter 3.47.8、Xcode 27.1。Flutter 3.44 起默认启用 SPM。为让团队和 CI 配置一致，可在**宿主应用**的 `pubspec.yaml` 中明确启用：
+
+```yaml
+flutter:
+  config:
+    enable-swift-package-manager: true
+```
+
+旧版 Flutter 或曾关闭 SPM 的环境可执行 `flutter config --enable-swift-package-manager`。然后在宿主根目录执行：
+
+```bash
+flutter pub get
+flutter build ios --config-only
+open ios/Runner.xcworkspace
+```
+
+在 Xcode 中完成以下配置：
+
+| 位置 | 操作 |
+|---|---|
+| Runner → Signing & Capabilities | 使用宿主自己的 Team、签名与 Bundle Identifier；Bundle ID 与阿里云 iOS 方案一致 |
+| Runner → General → Minimum Deployments | 不低于当前 Flutter 和插件要求中的较高值；插件声明 iOS 13，本次示例使用 iOS 15 |
+| Flutter 自动生成的 SPM 集成 | 确认 `FlutterGeneratedPluginSwiftPackage` 已加入 Runner，Scheme 有 `Run Prepare Flutter Framework Script`；自动生成失败时按 [Flutter 官方集成说明](https://docs.flutter.dev/packages-and-plugins/swift-package-manager/for-app-developers)修复 |
+| Runner → Build Phases | 按下方说明添加一次资源复制脚本，确保 SDK 默认图片能从 App 主 bundle 加载 |
+| Runner → Build Settings → User Script Sandboxing | 各构建配置使用 `No`（`ENABLE_USER_SCRIPT_SANDBOXING = NO`），与当前 Flutter 示例一致 |
+
+**资源复制是必须的一步。** [阿里云 iOS 接入文档](https://help.aliyun.com/zh/pnvs/developer-reference/the-ios-client-access)要求将 `ATAuthSDK.bundle` 放入宿主资源。SPM 自动嵌入动态 framework，但 SDK 默认图标通过 `NSBundle.mainBundle` 查找，单独保留 framework 内的 bundle 不够。
+
+在 Runner → Build Phases → **+ → New Run Script Phase** 中添加 `Copy Aliyun Auth Resources`，放在 Flutter 的 `Thin Binary` 后，所有构建配置都执行（不勾选仅在安装时运行）。脚本如下；example 工程已配置，可直接对照：
+
+```sh
+set -eu
+source="${BUILT_PRODUCTS_DIR:?}/ATAuthSDK_D.framework/ATAuthSDK.bundle"
+destination="${TARGET_BUILD_DIR:?}/${UNLOCALIZED_RESOURCES_FOLDER_PATH:?}/ATAuthSDK.bundle"
+if [ ! -d "$source" ]; then
+  echo "error: ATAuthSDK.bundle missing: $source" >&2
+  exit 1
+fi
+/bin/mkdir -p "$destination"
+/usr/bin/rsync -a --delete "$source/" "$destination/"
+```
+
+在该 Run Script 中填写以下路径，让 Xcode 正确安排构建依赖；使用基于依赖分析的执行即可：
+
+- **Input Files:** `$(BUILT_PRODUCTS_DIR)/ATAuthSDK_D.framework/ATAuthSDK.bundle`
+- **Output Files:** `$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ATAuthSDK.bundle`
+
+此脚本依赖上表的 `User Script Sandboxing = No`。本次 Xcode 验证中，仅声明 bundle 目录仍会在沙箱开启时拒绝读取其中的文件；当前 Flutter 构建脚本的沙箱支持也有[官方跟踪问题](https://github.com/flutter/flutter/issues/181821)。
+
+路径来自构建产物，不引用个人机器的 Pub cache。脚本同步删除已被新版 SDK 移除的旧图标。最终 `.app` 顶层应出现 `ATAuthSDK.bundle`；缺失时脚本报错并阻止构建。
+
+`Package.swift` 已声明 `ATAuthSDK_D.xcframework`，Flutter/SPM 自动链接、嵌入、按宿主设置签名，并在归档收集配套 dSYM。宿主无需再次拖入 framework、添加 `-ObjC` / `YTXOperators` 链接标志，或手工把 dSYM 放入 Copy Bundle Resources。原来手动接入过阿里云 SDK 的项目应移除旧 SDK 的重复引用；其他插件仍使用 CocoaPods 时保留它们所需的配置。
+
+### Flutter 调用
+
+先完成 Flutter binding 初始化，并在宿主适当的初始化时机调用一次 `await AliyunNumberAuth.init(androidSk, iosSk)`，等待成功后再创建自动检查环境的 `AliyunAuthController` / `AliyunAuthWidget`。SDK 密钥可由宿主配置或服务端提供；不在 Xcode 中配置密钥，也不修改插件源码填入密钥。模拟器可运行不依赖运营商的测试，真实号码认证使用有效方案密钥和开启蜂窝数据的真机验证。
+
+```dart
+WidgetsFlutterBinding.ensureInitialized();
+await AliyunNumberAuth.init(androidSk, iosSk);
+```
+
+插件的 Dart 并发锁只在当前 isolate 内生效。阿里云原生 SDK 是进程级单例，多 Engine 应由宿主统一路由至一个 Engine 使用，不支持并发访问。环境检测在原生 15 秒无响应后释放请求，Dart 返回不可用；本机号码校验在传入 timeout 后增加 1 秒兜底。授权页等待用户阅读、点击的时间没有总超时。
 
 ---
 
@@ -297,7 +364,7 @@ await AliyunNumberAuth.closePrivacyAlertDialog();
 
 ```dart
 final version = await AliyunNumberAuth.getSDKVersion();
-print(version); // "2.14.18"（iOS）/ "2.14.23"（Android）
+print(version); // "2.14.19"（iOS）/ "2.14.24"（Android）
 ```
 
 ---
@@ -799,9 +866,21 @@ AliyunAuthWidget(
 ./script/import-sdk.sh
 ```
 
-脚本自动从 `sdk/` 目录中挑选最新的 `numberAuthSDK_APP_Android_v*.zip` 与 `numberAuthSDK_APP_iOS_v*_static.zip`,校验 44 个我们用到的 SDK 方法签名仍然存在,然后清掉 `android/libs/*.aar` 与 `ios/aliyun_number_auth/Frameworks/*.xcframework` 并复制新版进去。
+在 macOS 上安装 Python 3 和 Xcode 命令行工具。将官方 Android ZIP 和 iOS **dynamic ZIP** 放入 `sdk/`；脚本按文件名版本挑选两个平台各自最新的包。
 
-> iOS 选 **static 版本**（文件名含 `_static`），SPM binary target 需要静态库。
+脚本先检查 Android 所需类、方法名提示及 iOS 公开头文件，再暂存完整资源、Maven 工件、Gradle 版本和 XCFramework。方法名检查不能代替编译及真实 SDK 验证。两端检查全部通过后才替换；一般失败或 HUP/INT/TERM 中断会回滚。进程强杀或断电后需检查 `sdk/.import-sdk.*` 备份和 `.import-sdk.lock`，恢复一致状态后再重试。未知或重复 Android 依赖会阻止导入，需先审查新 SDK 的依赖要求。
+
+动态 SDK 合并提供 `ATAuthSDK_D`，无需单独引入旧 `ATAuthSDK`、`YTXMonitor`、`YTXOperators`。脚本为所有 slice 补齐 Swift module map，将官方设备 dSYM 与设备二进制逐架构核对 UUID，并通过 XCFramework 的 `DebugSymbolsPath` 分发。缺少或不匹配的符号会阻止更新；不会制造空 dSYM，也不会把符号作为 App 资源打包。
+
+官方模拟器 framework 的 ad-hoc 资源签名在补齐 module map 后重新签名并严格核验，不使用证书或凭据。带真实签名身份的 framework 或签名 XCFramework 会拒绝改写，需单独审查分发方式。当前官方设备二进制及其 DWARF 保持原字节。
+
+### iOS 符号与归档
+
+旧静态版的 SDK 代码和可用调试信息链接进 Runner。Xcode 为承载资源生成空动态占位文件时，可能报 `ATAuthSDK`、`YTXMonitor`、`YTXOperators` 缺失 dSYM。当前使用官方动态版及其配套符号解决这条分发链路。SPM 本身支持静态和动态 binary target。
+
+检查**新生成**的 `.xcarchive`：`Products/Applications/<App>.app/Frameworks/ATAuthSDK_D.framework/ATAuthSDK_D` 与 `dSYMs/ATAuthSDK_D.framework.dSYM` 的 `xcrun dwarfdump --uuid` 结果必须匹配。此修复不覆盖其他插件（例如 fluwx 的 `WechatOpenSDK`）的符号告警；旧归档也不会自动改变。
+
+本地检查：`python3 -m unittest discover -s script -p 'test_*.py' -v`、`flutter analyze`、`flutter test`。iOS 原生可控回调测试位于 example 的 `RunnerTests`；它们不调用真实运营商认证。
 
 ---
 

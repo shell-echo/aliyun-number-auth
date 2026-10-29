@@ -1,3 +1,12 @@
+## Unreleased
+
+* iOS SDK 更新至 2.14.19 官方动态版，SPM 同时分发 UUID 匹配的官方设备 dSYM，并补齐 Swift module map，保留 SDK 资源和隐私清单。
+* Android SDK 更新至 2.14.24；SDK 导入先验证两端再替换，同步 Gradle 版本，失败回滚并保留非本次创建的临时目录。
+* iOS 回调绑定发起请求，防止旧响应完成新请求；环境检测和校验取号增加原生超时释放，初始化期间遵守互斥规则。
+* Android 为请求注册独立 listener，隔离已持有旧 listener 的迟到响应，UI 事件绑定当前登录；环境检测与校验取号增加原生超时释放。
+* 修复 example 手动本地 SPM 引用与 Flutter 自动生成包身份冲突的问题，增加导入失败及原生回调回归测试。
+* 文档补充认证方案、宿主 SPM/Xcode 配置与资源复制；示例将 ATAuthSDK.bundle 放入 App 主 bundle，并验证默认图标加载。
+
 ## 0.1.0
 
 ### 新增功能

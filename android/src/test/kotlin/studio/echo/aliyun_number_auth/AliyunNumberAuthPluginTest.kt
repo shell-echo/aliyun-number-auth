@@ -20,6 +20,61 @@ import kotlin.test.assertTrue
 
 internal class AliyunNumberAuthPluginTest {
     @Test
+    fun expiredListenerCannotConsumeRequestThatStartedBeforeItsCallback() {
+        val queued = mutableListOf<() -> Unit>()
+        val plugin = AliyunNumberAuthPlugin { queued.add(it) }
+        val old = Mockito.mock(MethodChannel.Result::class.java)
+        val current = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.pendingResult = old
+        val listener = plugin.createTokenListener(tokenSnap = old)
+        plugin.pendingResult = current
+
+        listener.onTokenSuccess("late response from previous verification")
+        queued.forEach { it() }
+
+        Mockito.verifyNoInteractions(old, current)
+        assertTrue(plugin.pendingResult === current)
+    }
+
+    @Test
+    fun queuedLoginCallbackCannotConsumeReplacementRequest() {
+        val queued = mutableListOf<() -> Unit>()
+        val plugin = AliyunNumberAuthPlugin { queued.add(it) }
+        val old = Mockito.mock(MethodChannel.Result::class.java)
+        val current = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.pendingLoginResult = old
+        val listener = plugin.createTokenListener(loginSnap = old)
+        listener.onTokenSuccess("queued response")
+        plugin.pendingLoginResult = current
+        queued.forEach { it() }
+
+        Mockito.verifyNoInteractions(old, current)
+        assertTrue(plugin.pendingLoginResult === current)
+    }
+
+    @Test
+    fun environmentListenerCompletesOnlyOnceAndDoesNotAffectRetry() {
+        val queued = mutableListOf<() -> Unit>()
+        val plugin = AliyunNumberAuthPlugin { queued.add(it) }
+        val first = Mockito.mock(MethodChannel.Result::class.java)
+        val next = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.pendingCheckResult = first
+        val listener = plugin.createTokenListener(checkSnap = first)
+        // A malformed environment result is unavailable, never a token success.
+        listener.onTokenSuccess("not-json")
+        queued.removeAt(0)()
+        Mockito.verify(first).success(false)
+        assertNull(plugin.pendingCheckResult)
+
+        plugin.pendingCheckResult = next
+        listener.onTokenSuccess("duplicate callback")
+        queued.removeAt(0)()
+        Mockito.verifyNoMoreInteractions(first)
+        Mockito.verifyNoInteractions(next)
+        assertTrue(plugin.pendingCheckResult === next)
+    }
+
+    @Test
     fun environmentCheck_acceptsOnlyEnvironmentSuccessCode() {
         assertTrue(isEnvironmentAvailable(ResultCode.CODE_ERROR_ENV_CHECK_SUCCESS))
         assertFalse(isEnvironmentAvailable(ResultCode.CODE_SUCCESS))
