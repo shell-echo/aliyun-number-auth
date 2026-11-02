@@ -714,8 +714,9 @@ public class AliyunNumberAuthPlugin: NSObject, FlutterPlugin {
         cg.addLine(to: CGPoint(x: p + ck * 0.78, y: p + ck * 0.30))
         cg.strokePath()
       } else {
-        UIColor.white.setFill(); path.fill()
-        color.withAlphaComponent(0.5).setStroke()
+        // Keep the host surface visible and preserve its supplied border color.
+        // A white fill and forced 50% stroke dilute contrast after compositing.
+        color.setStroke()
         // Match Android stroke width = border * 1.5 = size * 0.09.
         path.lineWidth = borderInset * 1.5; path.stroke()
       }

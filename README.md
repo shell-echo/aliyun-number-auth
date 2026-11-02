@@ -604,7 +604,7 @@ logoImageData: (await rootBundle.load('assets/logo.png')).buffer.asUint8List(),
 | `checkBoxChecked` | `bool` | `false` | 默认勾选 |
 | `checkBoxHidden` | `bool` | `false` | 隐藏 Checkbox |
 | `checkBoxSize` | `double` | `20` | 尺寸（逻辑像素） |
-| `checkBoxColor` | `Color?` | `#1677FF` | 选中填充色 / 未选中边框色 |
+| `checkBoxColor` | `Color?` | `#1677FF` | 选中填充色 / 未选中边框色；保留传入 alpha，未选中内部透明 |
 | `checkBoxCircle` | `bool` | `false` | `true` = 圆形；`false` = 圆角方形 |
 | `checkBoxCheckColor` | `Color?` | 白色 | 选中时勾的颜色 |
 | `checkBoxVerticalCenter` | `bool` | `false` | Checkbox 与协议文字垂直居中 |
@@ -880,7 +880,9 @@ AliyunAuthWidget(
 
 检查**新生成**的 `.xcarchive`：`Products/Applications/<App>.app/Frameworks/ATAuthSDK_D.framework/ATAuthSDK_D` 与 `dSYMs/ATAuthSDK_D.framework.dSYM` 的 `xcrun dwarfdump --uuid` 结果必须匹配。此修复不覆盖其他插件（例如 fluwx 的 `WechatOpenSDK`）的符号告警；旧归档也不会自动改变。
 
-本地检查：`python3 -m unittest discover -s script -p 'test_*.py' -v`、`flutter analyze`、`flutter test`。iOS 原生可控回调测试位于 example 的 `RunnerTests`；它们不调用真实运营商认证。
+Checkbox 的未选中图像不添加白色底板，也不额外降低描边透明度；使用宿主背景合成。调用方负责在实际承载背景上选择可辨识的 `checkBoxColor`，需要不透明描边时传入 alpha 255。选中填充、勾选标记、尺寸、形状和默认不勾选行为保持不变。
+
+本地检查：`python3 -m unittest discover -s script -p 'test_*.py' -v`、`flutter analyze`、`flutter test`。iOS 原生可控回调测试位于 example 的 `RunnerTests`；它们不调用真实运营商认证。`testUncheckedCheckboxFinalCompositing` 经过 MethodChannel 的实际配置入口读取传给 SDK 的图像，在浅/深色背景合成后检查边界、透明内部和选中状态。Android 的 `CheckboxBitmapTest` 通过 [Robolectric Native Graphics](https://robolectric.org/javadoc/4.16/org/robolectric/annotation/GraphicsMode.Mode.html) 测试生产使用的 Bitmap，再绘制到背景并读取像素；在 example 的 `android/` 运行 Gradle `:aliyun_number_auth:testDebugUnitTest`。这些测试覆盖两种形状、多个尺寸和颜色样例；不代替真机运营商授权页的布局、读屏或真实登录验收。
 
 ---
 

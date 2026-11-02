@@ -261,7 +261,8 @@ class AliyunAuthUIConfig {
   final bool checkBoxHidden;
   final double checkBoxSize;
 
-  /// Fill color (checked) and border color (unchecked).
+  /// Fill color (checked) and border color (unchecked), preserving caller alpha.
+  /// The unchecked interior is transparent so the host surface shows through.
   final Color? checkBoxColor;
 
   /// `true` = circular; `false` (default) = rounded-square.

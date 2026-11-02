@@ -71,7 +71,7 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             all {
-                it.useJUnitPlatform()
+                it.useJUnit()
 
                 it.outputs.upToDateWhen { false }
 
@@ -91,7 +91,8 @@ kotlin {
 }
 
 dependencies {
-    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
+    testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("org.mockito:mockito-core:5.0.0")
     // Aliyun ATAuth SDK, resolved from the local Maven repo at libs-maven/.
     // See the allprojects { repositories { ... } } block above.
