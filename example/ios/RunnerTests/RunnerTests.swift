@@ -22,6 +22,87 @@ class RunnerTests: XCTestCase {
     }
   }
 
+  // Exercise the actual images supplied to TXCustomModel, not just config colors.
+  func testUncheckedCheckboxFinalCompositing() throws {
+    let samples: [(UInt32, UInt32)] = [
+      (0xFFF0B487, 0xFF24211D), (0xFFA04715, 0xFFFBF7EF),
+      (0xFFE5E5E5, 0xFF0A0A0A), (0xFF000000, 0xFFFFFFFF),
+      (0xFFF0B487, 0xFF25211D), (0xFFA04715, 0xFFFBF6EC),
+    ]
+    for (color, background) in samples {
+      for size in [16.0, 20.0, 28.0] {
+        for circle in [false, true] {
+          let sdk = FakeAuthHandler()
+          let plugin = initializedPlugin(sdk)
+          plugin.handle(FlutterMethodCall(methodName: "getMobileToken", arguments: [
+            "uiConfig": ["checkBoxColor": Int64(color), "checkBoxCheckColor": Int64(background),
+                         "checkBoxSize": size, "checkBoxCircle": circle]
+          ])) { _ in }
+          let model = try XCTUnwrap(sdk.models.last)
+          XCTAssertFalse(model.checkBoxIsChecked)
+          let images = try XCTUnwrap(model.checkBoxImages)
+          XCTAssertEqual(images.count, 2)
+          let image = images[0]
+          let raw = rgba(image)
+          let x = Int((size * 0.06 * image.scale).rounded())
+          let y = raw.height / 2
+          let core = raw.pixel(x, y)
+          XCTAssertEqual(core[3], 255, "unchecked border must retain caller alpha")
+          XCTAssertEqual(raw.pixel(raw.width / 2, y)[3], 0, "no fixed white fill")
+          let format = UIGraphicsImageRendererFormat()
+          format.scale = image.scale
+          let composite = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+            uiColor(background).setFill()
+            UIRectFill(CGRect(origin: .zero, size: image.size))
+            image.draw(at: .zero)
+          }
+          let pixels = rgba(composite)
+          let edge = pixels.pixel(x, y)
+          let surface = pixels.pixel(pixels.width / 2, y)
+          XCTAssertEqual(Array(edge.prefix(3)), rgb(color), "final border must not be diluted")
+          XCTAssertEqual(Array(surface.prefix(3)), rgb(background), "sheet surface must show through")
+          let ratio = contrast(edge, surface)
+          XCTAssertGreaterThanOrEqual(ratio, 3, "final native raster, not a token-only assertion")
+          // Both checkbox shapes must still show a distinguishable checked state.
+          let checked = rgba(images[1])
+          XCTAssertEqual(checked.pixel(checked.width / 2, checked.height / 4)[3], 255)
+        }
+      }
+    }
+  }
+
+  private func rgb(_ argb: UInt32) -> [UInt8] {
+    [UInt8((argb >> 16) & 255), UInt8((argb >> 8) & 255), UInt8(argb & 255)]
+  }
+
+  private func uiColor(_ argb: UInt32) -> UIColor {
+    let c = rgb(argb)
+    return UIColor(red: CGFloat(c[0])/255, green: CGFloat(c[1])/255, blue: CGFloat(c[2])/255, alpha: 1)
+  }
+
+  private func contrast(_ a: [UInt8], _ b: [UInt8]) -> Double {
+    func luminance(_ c: [UInt8]) -> Double {
+      let linear = c.prefix(3).map { value -> Double in
+        let v = Double(value) / 255
+        return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+      }
+      return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
+    }
+    let x = luminance(a), y = luminance(b)
+    return (max(x, y) + 0.05) / (min(x, y) + 0.05)
+  }
+
+  private func rgba(_ image: UIImage) -> (width: Int, height: Int, pixel: (Int, Int) -> [UInt8]) {
+    let cg = image.cgImage!
+    let w = cg.width, h = cg.height
+    var bytes = [UInt8](repeating: 0, count: w * h * 4)
+    let context = CGContext(data: &bytes, width: w, height: h, bitsPerComponent: 8,
+      bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)!
+    context.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+    return (w, h, { x, y in Array(bytes[((y * w + x) * 4)..<((y * w + x) * 4 + 4)]) })
+  }
+
   private func drainCallbacks() {
     let drained = expectation(description: "SDK callbacks delivered on main queue")
     DispatchQueue.main.async { drained.fulfill() }
@@ -199,6 +280,7 @@ private final class FakeAuthHandler: TXCommonHandler {
   var checks: [(Response?) -> Void] = []
   var verifications: [(Response) -> Void] = []
   var logins: [(Response) -> Void] = []
+  var models: [TXCustomModel] = []
   var scheduled = ScheduledCallbacks()
 
   override func setAuthSDKInfo(_ info: String, complete: ((Response) -> Void)?) {
@@ -212,6 +294,7 @@ private final class FakeAuthHandler: TXCommonHandler {
   }
   override func getLoginToken(withTimeout timeout: TimeInterval, controller: UIViewController,
                              model: TXCustomModel?, complete: ((Response) -> Void)?) {
+    if let model { models.append(model) }
     logins.append(complete!)
   }
   override func cancelLoginVC(animated flag: Bool, complete: (() -> Void)?) {

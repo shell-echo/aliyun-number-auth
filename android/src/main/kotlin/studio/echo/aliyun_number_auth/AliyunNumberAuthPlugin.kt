@@ -854,44 +854,9 @@ class AliyunNumberAuthPlugin internal constructor(
         sizePx: Int,
         innerPaddingPx: Float = 0f,
     ): BitmapDrawable {
-        val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val border = sizePx * 0.06f
-        val rect = RectF(border, border, sizePx - border, sizePx - border)
-        val radius = if (circle) (sizePx - border * 2) / 2f else sizePx * 0.15f
-
-        if (checked) {
-            paint.style = Paint.Style.FILL
-            paint.color = fillColor
-            canvas.drawRoundRect(rect, radius, radius, paint)
-
-            paint.style = Paint.Style.STROKE
-            paint.color = checkColor
-            paint.strokeWidth = sizePx * 0.12f
-            paint.strokeCap = Paint.Cap.ROUND
-            paint.strokeJoin = Paint.Join.ROUND
-            val path = Path()
-            val p  = innerPaddingPx.coerceAtLeast(0f)
-            val ck = sizePx - p * 2
-            path.moveTo(p + ck * 0.22f, p + ck * 0.50f)
-            path.lineTo(p + ck * 0.42f, p + ck * 0.70f)
-            path.lineTo(p + ck * 0.78f, p + ck * 0.30f)
-            canvas.drawPath(path, paint)
-        } else {
-            paint.style = Paint.Style.FILL
-            paint.color = Color.WHITE
-            canvas.drawRoundRect(rect, radius, radius, paint)
-
-            paint.style = Paint.Style.STROKE
-            paint.color = Color.argb(
-                128,
-                Color.red(fillColor), Color.green(fillColor), Color.blue(fillColor),
-            )
-            paint.strokeWidth = border * 1.5f
-            canvas.drawRoundRect(rect, radius, radius, paint)
-        }
-        return BitmapDrawable(context.resources, bmp)
+        return BitmapDrawable(context.resources, checkboxBitmap(
+            checked, fillColor, checkColor, circle, sizePx, innerPaddingPx,
+        ))
     }
 
     private fun buildBackArrowDrawable(color: Int): BitmapDrawable {
@@ -1033,3 +998,46 @@ internal fun androidDialogLayout(config: Map<String, Any>) = AndroidDialogLayout
     horizontalPadding = (config["privacyHorizontalPadding"] as? Number ?: 28.0).toDouble().roundToInt(),
     privacyBottomOffset = (config["privacyBottomOffset"] as? Number)?.toDouble()?.roundToInt(),
 )
+
+// Shared raster entry: production wraps this bitmap in the SDK's Drawable.
+internal fun checkboxBitmap(
+    checked: Boolean,
+    fillColor: Int,
+    checkColor: Int,
+    circle: Boolean,
+    sizePx: Int,
+    innerPaddingPx: Float = 0f,
+): Bitmap {
+    val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val border = sizePx * 0.06f
+    val rect = RectF(border, border, sizePx - border, sizePx - border)
+    val radius = if (circle) (sizePx - border * 2) / 2f else sizePx * 0.15f
+
+    if (checked) {
+        paint.style = Paint.Style.FILL
+        paint.color = fillColor
+        canvas.drawRoundRect(rect, radius, radius, paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.color = checkColor
+        paint.strokeWidth = sizePx * 0.12f
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+        val path = Path()
+        val p  = innerPaddingPx.coerceAtLeast(0f)
+        val ck = sizePx - p * 2
+        path.moveTo(p + ck * 0.22f, p + ck * 0.50f)
+        path.lineTo(p + ck * 0.42f, p + ck * 0.70f)
+        path.lineTo(p + ck * 0.78f, p + ck * 0.30f)
+        canvas.drawPath(path, paint)
+    } else {
+        // Preserve the host surface and caller alpha; do not dilute contrast.
+        paint.style = Paint.Style.STROKE
+        paint.color = fillColor
+        paint.strokeWidth = border * 1.5f
+        canvas.drawRoundRect(rect, radius, radius, paint)
+    }
+    return bmp
+}
